@@ -1,0 +1,10 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/.claude
+/src/Viamus.Azure.Devops.Mcp.Server/bin/Debug/net10.0
+/src/Viamus.Azure.Devops.Mcp.Server/obj
+/src/Viamus.Azure.Devops.Mcp.Server/appsettings.Development.json
+/src/Viamus.Azure.Devops.Mcp.Server/Viamus.Azure.Devops.Mcp.Server.csproj.user
