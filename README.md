@@ -90,7 +90,7 @@ Add the following configuration to your Claude Desktop config file (`claude_desk
 {
   "mcpServers": {
     "azure-devops": {
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080"
     }
   }
 }
@@ -105,7 +105,7 @@ Add to your MCP configuration file:
   "mcpServers": {
     "azure-devops": {
       "type": "http",
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080"
     }
   }
 }
