@@ -39,6 +39,18 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         "System.Parent"
     ];
 
+    private static readonly string[] SummaryFields =
+    [
+        "System.Id",
+        "System.Title",
+        "System.WorkItemType",
+        "System.State",
+        "System.AssignedTo",
+        "Microsoft.VSTS.Common.Priority",
+        "System.ChangedDate",
+        "System.Parent"
+    ];
+
     public AzureDevOpsService(IOptions<AzureDevOpsOptions> options, ILogger<AzureDevOpsService> logger)
     {
         _options = options.Value;
@@ -170,6 +182,100 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             _logger.LogError(ex, "Error getting child work items for parent {ParentWorkItemId}", parentWorkItemId);
             throw;
         }
+    }
+
+    public async Task<PaginatedResult<WorkItemSummaryDto>> QueryWorkItemsSummaryAsync(
+        string wiqlQuery,
+        string? project = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+
+        try
+        {
+            _logger.LogDebug("Executing paginated WIQL query (page: {Page}, pageSize: {PageSize})", page, pageSize);
+
+            var wiql = new Wiql { Query = wiqlQuery };
+
+            // First, get all matching IDs to determine total count
+            var queryResult = await _witClient.QueryByWiqlAsync(
+                wiql: wiql,
+                project: project ?? _options.DefaultProject,
+                cancellationToken: cancellationToken);
+
+            if (queryResult.WorkItems == null || !queryResult.WorkItems.Any())
+            {
+                return new PaginatedResult<WorkItemSummaryDto>
+                {
+                    Items = [],
+                    TotalCount = 0,
+                    Page = page,
+                    PageSize = pageSize
+                };
+            }
+
+            var allIds = queryResult.WorkItems.Select(wi => wi.Id).ToList();
+            var totalCount = allIds.Count;
+
+            // Get only the IDs for the requested page
+            var pageIds = allIds
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            if (pageIds.Count == 0)
+            {
+                return new PaginatedResult<WorkItemSummaryDto>
+                {
+                    Items = [],
+                    TotalCount = totalCount,
+                    Page = page,
+                    PageSize = pageSize
+                };
+            }
+
+            // Fetch only summary fields for the page items
+            var workItems = await _witClient.GetWorkItemsAsync(
+                project: project ?? _options.DefaultProject,
+                ids: pageIds,
+                fields: SummaryFields,
+                cancellationToken: cancellationToken);
+
+            var summaries = workItems.Select(MapToSummaryDto).ToList();
+
+            return new PaginatedResult<WorkItemSummaryDto>
+            {
+                Items = summaries,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing paginated WIQL query");
+            throw;
+        }
+    }
+
+    private static WorkItemSummaryDto MapToSummaryDto(WorkItem workItem)
+    {
+        var fields = workItem.Fields;
+
+        return new WorkItemSummaryDto
+        {
+            Id = workItem.Id ?? 0,
+            Title = GetFieldValue<string>(fields, "System.Title"),
+            WorkItemType = GetFieldValue<string>(fields, "System.WorkItemType"),
+            State = GetFieldValue<string>(fields, "System.State"),
+            AssignedTo = GetIdentityFieldValue(fields, "System.AssignedTo"),
+            Priority = GetFieldValue<object>(fields, "Microsoft.VSTS.Common.Priority")?.ToString(),
+            ChangedDate = GetFieldValue<DateTime?>(fields, "System.ChangedDate"),
+            ParentId = GetFieldValue<int?>(fields, "System.Parent")
+        };
     }
 
     private static WorkItemDto MapToDto(WorkItem workItem, bool includeAllFields = false)

@@ -73,16 +73,15 @@ public sealed class WorkItemTools
     }
 
     [McpServerTool(Name = "get_work_items_by_state")]
-    [Description("Gets work items filtered by state (e.g., 'Active', 'New', 'Closed', 'Resolved'). Useful for quickly finding work items in a specific state.")]
+    [Description("Gets work items filtered by state with pagination. Returns a summary view (ID, Title, Type, State, Priority) to reduce payload size. Use get_work_item to get full details of a specific item.")]
     public async Task<string> GetWorkItemsByState(
         [Description("The state to filter by (e.g., 'Active', 'New', 'Closed', 'Resolved')")] string state,
         [Description("The project name (required)")] string project,
         [Description("Optional work item type filter (e.g., 'Bug', 'Task', 'User Story')")] string? workItemType = null,
-        [Description("Maximum number of results (default: 50, max: 200)")] int top = 50,
+        [Description("Page number, starting from 1 (default: 1)")] int page = 1,
+        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        top = Math.Clamp(top, 1, 200);
-
         var typeFilter = string.IsNullOrWhiteSpace(workItemType)
             ? string.Empty
             : $" AND [System.WorkItemType] = '{EscapeWiqlString(workItemType)}'";
@@ -94,21 +93,31 @@ public sealed class WorkItemTools
             AND [System.State] = '{EscapeWiqlString(state)}'{typeFilter}
             ORDER BY [System.ChangedDate] DESC";
 
-        var workItems = await _azureDevOpsService.QueryWorkItemsAsync(wiqlQuery, project, top, cancellationToken);
-        return JsonSerializer.Serialize(new { count = workItems.Count, state, workItems }, JsonOptions);
+        var result = await _azureDevOpsService.QueryWorkItemsSummaryAsync(wiqlQuery, project, page, pageSize, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            state,
+            workItemType,
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            hasNextPage = result.HasNextPage,
+            hasPreviousPage = result.HasPreviousPage,
+            items = result.Items
+        }, JsonOptions);
     }
 
     [McpServerTool(Name = "get_work_items_assigned_to")]
-    [Description("Gets work items assigned to a specific user. The user can be specified by display name or email.")]
+    [Description("Gets work items assigned to a specific user with pagination. Returns a summary view (ID, Title, Type, State, Priority) to reduce payload size. Use get_work_item to get full details of a specific item.")]
     public async Task<string> GetWorkItemsAssignedTo(
         [Description("The display name or email of the user")] string assignedTo,
         [Description("The project name (required)")] string project,
         [Description("Filter by state (optional, e.g., 'Active')")] string? state = null,
-        [Description("Maximum number of results (default: 50, max: 200)")] int top = 50,
+        [Description("Page number, starting from 1 (default: 1)")] int page = 1,
+        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        top = Math.Clamp(top, 1, 200);
-
         var stateFilter = string.IsNullOrWhiteSpace(state)
             ? string.Empty
             : $" AND [System.State] = '{EscapeWiqlString(state)}'";
@@ -120,8 +129,18 @@ public sealed class WorkItemTools
             AND [System.AssignedTo] CONTAINS '{EscapeWiqlString(assignedTo)}'{stateFilter}
             ORDER BY [System.ChangedDate] DESC";
 
-        var workItems = await _azureDevOpsService.QueryWorkItemsAsync(wiqlQuery, project, top, cancellationToken);
-        return JsonSerializer.Serialize(new { count = workItems.Count, assignedTo, workItems }, JsonOptions);
+        var result = await _azureDevOpsService.QueryWorkItemsSummaryAsync(wiqlQuery, project, page, pageSize, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            assignedTo,
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            hasNextPage = result.HasNextPage,
+            hasPreviousPage = result.HasPreviousPage,
+            items = result.Items
+        }, JsonOptions);
     }
 
     [McpServerTool(Name = "get_child_work_items")]
@@ -136,15 +155,15 @@ public sealed class WorkItemTools
     }
 
     [McpServerTool(Name = "get_recent_work_items")]
-    [Description("Gets recently changed work items in a project. Useful for seeing what's been updated recently.")]
+    [Description("Gets recently changed work items with pagination. Returns a summary view (ID, Title, Type, State, Priority) to reduce payload size. Use get_work_item to get full details of a specific item.")]
     public async Task<string> GetRecentWorkItems(
         [Description("The project name (required)")] string project,
         [Description("Number of days to look back (default: 7, max: 30)")] int daysBack = 7,
-        [Description("Maximum number of results (default: 50, max: 200)")] int top = 50,
+        [Description("Page number, starting from 1 (default: 1)")] int page = 1,
+        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         daysBack = Math.Clamp(daysBack, 1, 30);
-        top = Math.Clamp(top, 1, 200);
 
         var sinceDate = DateTime.UtcNow.AddDays(-daysBack).ToString("yyyy-MM-dd");
 
@@ -155,21 +174,31 @@ public sealed class WorkItemTools
             AND [System.ChangedDate] >= '{sinceDate}'
             ORDER BY [System.ChangedDate] DESC";
 
-        var workItems = await _azureDevOpsService.QueryWorkItemsAsync(wiqlQuery, project, top, cancellationToken);
-        return JsonSerializer.Serialize(new { count = workItems.Count, sinceDate, workItems }, JsonOptions);
+        var result = await _azureDevOpsService.QueryWorkItemsSummaryAsync(wiqlQuery, project, page, pageSize, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            sinceDate,
+            daysBack,
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            hasNextPage = result.HasNextPage,
+            hasPreviousPage = result.HasPreviousPage,
+            items = result.Items
+        }, JsonOptions);
     }
 
     [McpServerTool(Name = "search_work_items")]
-    [Description("Searches work items by title containing the specified text.")]
+    [Description("Searches work items by title with pagination. Returns a summary view (ID, Title, Type, State, Priority) to reduce payload size. Use get_work_item to get full details of a specific item.")]
     public async Task<string> SearchWorkItems(
         [Description("The search text to find in work item titles")] string searchText,
         [Description("The project name (required)")] string project,
         [Description("Optional work item type filter (e.g., 'Bug', 'Task', 'User Story')")] string? workItemType = null,
-        [Description("Maximum number of results (default: 50, max: 200)")] int top = 50,
+        [Description("Page number, starting from 1 (default: 1)")] int page = 1,
+        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        top = Math.Clamp(top, 1, 200);
-
         var typeFilter = string.IsNullOrWhiteSpace(workItemType)
             ? string.Empty
             : $" AND [System.WorkItemType] = '{EscapeWiqlString(workItemType)}'";
@@ -181,8 +210,19 @@ public sealed class WorkItemTools
             AND [System.Title] CONTAINS '{EscapeWiqlString(searchText)}'{typeFilter}
             ORDER BY [System.ChangedDate] DESC";
 
-        var workItems = await _azureDevOpsService.QueryWorkItemsAsync(wiqlQuery, project, top, cancellationToken);
-        return JsonSerializer.Serialize(new { count = workItems.Count, searchText, workItems }, JsonOptions);
+        var result = await _azureDevOpsService.QueryWorkItemsSummaryAsync(wiqlQuery, project, page, pageSize, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            searchText,
+            workItemType,
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            hasNextPage = result.HasNextPage,
+            hasPreviousPage = result.HasPreviousPage,
+            items = result.Items
+        }, JsonOptions);
     }
 
     private static List<int> ParseWorkItemIds(string workItemIds)

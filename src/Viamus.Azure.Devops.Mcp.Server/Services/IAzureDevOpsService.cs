@@ -43,4 +43,21 @@ public interface IAzureDevOpsService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of child work items.</returns>
     Task<IReadOnlyList<WorkItemDto>> GetChildWorkItemsAsync(int parentWorkItemId, string? project = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Queries work items using WIQL and returns paginated summary results.
+    /// This is optimized for large result sets with reduced payload size.
+    /// </summary>
+    /// <param name="wiqlQuery">The WIQL query string.</param>
+    /// <param name="project">The project name (optional).</param>
+    /// <param name="page">Page number (1-based).</param>
+    /// <param name="pageSize">Number of items per page.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Paginated list of work item summaries.</returns>
+    Task<PaginatedResult<WorkItemSummaryDto>> QueryWorkItemsSummaryAsync(
+        string wiqlQuery,
+        string? project = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default);
 }
