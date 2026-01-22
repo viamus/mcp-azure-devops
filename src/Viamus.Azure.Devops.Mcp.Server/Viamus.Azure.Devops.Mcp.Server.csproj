@@ -6,6 +6,26 @@
     <Nullable>enable</Nullable>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>..\..</DockerfileContext>
+
+    <!-- Package metadata -->
+    <Version>1.0.0</Version>
+    <Authors>Viamus</Authors>
+    <Company>Viamus</Company>
+    <Product>Azure DevOps MCP Server</Product>
+    <Description>MCP Server for Azure DevOps integration</Description>
+    <Copyright>Copyright © Viamus 2025</Copyright>
+    <RepositoryUrl>https://github.com/viamus/mcp-azure-devops</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Self-contained executable configuration -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <IsPublishable>true</IsPublishable>
+    <IsPackable>false</IsPackable>
+    <GenerateStaticWebAssetsPublishManifest>false</GenerateStaticWebAssetsPublishManifest>
   </PropertyGroup>
 
   <ItemGroup>
