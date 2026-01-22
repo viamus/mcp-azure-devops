@@ -1,10 +1,167 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
-################################################################################
+﻿##############################
+# .NET / C#
+##############################
 
-/.vs
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# .NET artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
+*.tmp
+*.ilk
+*.meta
+*.dbmdl
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+##############################
+# NuGet
+##############################
+
+# Packages
+*.nupkg
+*.snupkg
+# packages/
+# Uncomment if using packages folder instead of PackageReference
+
+# NuGet cache (optional – usually global)
+.nuget/
+
+##############################
+# ASP.NET / Web
+##############################
+
+# ASP.NET Core
+appsettings.*.json
+!appsettings.json
+appsettings.Development.json
+
+wwwroot/lib/
+wwwroot/dist/
+
+# IIS
+*.iisexpress
+
+##############################
+# Visual Studio
+##############################
+
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
+##############################
+# JetBrains Rider
+##############################
+
+.idea/
+*.sln.iml
+
+##############################
+# OS files
+##############################
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+##############################
+# Logs
+##############################
+
+*.log
+
+##############################
+# Docker
+##############################
+
+docker-compose.override.yml
+.env
+.env.*
+
+##############################
+# Publish / Artifacts
+##############################
+
+publish/
+out/
+artifacts/
+
+##############################
+# Coverage tools
+##############################
+
+.coverage/
+coverage/
+coverage-report/
+lcov.info
+
+##############################
+# User secrets / sensitive
+##############################
+
+secrets.json
+*.pfx
+*.snk
+
+##############################
+# Entity Framework
+##############################
+
+Migrations/
+# Comment this if you want to version migrations
+
+##############################
+# Azure / DevOps
+##############################
+
+.azure/
+.local.settings.json
+
+##############################
+# Node / Frontend (if applicable)
+##############################
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+##############################
+# Misc
+##############################
+
+*.orig
+*.bak
 /.claude
-/src/Viamus.Azure.Devops.Mcp.Server/bin/Debug/net10.0
-/src/Viamus.Azure.Devops.Mcp.Server/obj
-/src/Viamus.Azure.Devops.Mcp.Server/appsettings.Development.json
-/src/Viamus.Azure.Devops.Mcp.Server/Viamus.Azure.Devops.Mcp.Server.csproj.user

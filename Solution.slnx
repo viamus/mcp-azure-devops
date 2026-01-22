@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="src/Viamus.Azure.Devops.Mcp.Server/Viamus.Azure.Devops.Mcp.Server.csproj" Id="eacf2ca1-b298-4e84-a085-ff521d641530" />
+  <Project Path="tests/Viamus.Azure.Devops.Mcp.Server.Tests/Viamus.Azure.Devops.Mcp.Server.Tests.csproj" Id="26f86b4b-d630-4add-a86a-630f5a063ef2" />
 </Solution>
