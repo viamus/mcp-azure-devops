@@ -59,17 +59,25 @@ public sealed class WorkItemTools
     }
 
     [McpServerTool(Name = "query_work_items")]
-    [Description("Queries Azure DevOps work items using WIQL (Work Item Query Language). Allows flexible searching and filtering of work items.")]
+    [Description("Queries Azure DevOps work items using WIQL (Work Item Query Language) with pagination. Returns a summary view (ID, Title, Type, State, Priority) to reduce payload size. Use get_work_item to get full details of a specific item.")]
     public async Task<string> QueryWorkItems(
         [Description("The WIQL query string. Example: SELECT [System.Id], [System.Title] FROM WorkItems WHERE [System.State] = 'Active'")] string wiqlQuery,
         [Description("The project name (optional)")] string? project = null,
-        [Description("Maximum number of results to return (default: 50, max: 200)")] int top = 50,
+        [Description("Page number, starting from 1 (default: 1)")] int page = 1,
+        [Description("Number of items per page (default: 20, max: 20)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        top = Math.Clamp(top, 1, 200);
-
-        var workItems = await _azureDevOpsService.QueryWorkItemsAsync(wiqlQuery, project, top, cancellationToken);
-        return JsonSerializer.Serialize(new { count = workItems.Count, workItems }, JsonOptions);
+        var result = await _azureDevOpsService.QueryWorkItemsSummaryAsync(wiqlQuery, project, page, pageSize, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            hasNextPage = result.HasNextPage,
+            hasPreviousPage = result.HasPreviousPage,
+            items = result.Items
+        }, JsonOptions);
     }
 
     [McpServerTool(Name = "get_work_items_by_state")]
@@ -79,7 +87,7 @@ public sealed class WorkItemTools
         [Description("The project name (required)")] string project,
         [Description("Optional work item type filter (e.g., 'Bug', 'Task', 'User Story')")] string? workItemType = null,
         [Description("Page number, starting from 1 (default: 1)")] int page = 1,
-        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
+        [Description("Number of items per page (default: 20, max: 20)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         var typeFilter = string.IsNullOrWhiteSpace(workItemType)
@@ -115,7 +123,7 @@ public sealed class WorkItemTools
         [Description("The project name (required)")] string project,
         [Description("Filter by state (optional, e.g., 'Active')")] string? state = null,
         [Description("Page number, starting from 1 (default: 1)")] int page = 1,
-        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
+        [Description("Number of items per page (default: 20, max: 20)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         var stateFilter = string.IsNullOrWhiteSpace(state)
@@ -160,7 +168,7 @@ public sealed class WorkItemTools
         [Description("The project name (required)")] string project,
         [Description("Number of days to look back (default: 7, max: 30)")] int daysBack = 7,
         [Description("Page number, starting from 1 (default: 1)")] int page = 1,
-        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
+        [Description("Number of items per page (default: 20, max: 20)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         daysBack = Math.Clamp(daysBack, 1, 30);
@@ -196,7 +204,7 @@ public sealed class WorkItemTools
         [Description("The project name (required)")] string project,
         [Description("Optional work item type filter (e.g., 'Bug', 'Task', 'User Story')")] string? workItemType = null,
         [Description("Page number, starting from 1 (default: 1)")] int page = 1,
-        [Description("Number of items per page (default: 20, max: 50)")] int pageSize = 20,
+        [Description("Number of items per page (default: 20, max: 20)")] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
         var typeFilter = string.IsNullOrWhiteSpace(workItemType)

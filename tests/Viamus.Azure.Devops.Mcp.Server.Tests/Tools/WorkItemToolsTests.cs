@@ -179,45 +179,91 @@ public class WorkItemToolsTests
     #region QueryWorkItems Tests
 
     [Fact]
-    public async Task QueryWorkItems_ShouldReturnResults()
+    public async Task QueryWorkItems_ShouldReturnPaginatedResults()
     {
-        var workItems = new List<WorkItemDto>
+        var paginatedResult = new PaginatedResult<WorkItemSummaryDto>
         {
-            new() { Id = 1, Title = "Bug 1", State = "Active" }
+            Items = [new WorkItemSummaryDto { Id = 1, Title = "Bug 1", State = "Active" }],
+            TotalCount = 1,
+            Page = 1,
+            PageSize = 20
         };
 
         _mockService
-            .Setup(s => s.QueryWorkItemsAsync(It.IsAny<string>(), null, 50, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(workItems);
+            .Setup(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), null, 1, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(paginatedResult);
 
         var result = await _tools.QueryWorkItems("SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'");
 
-        Assert.Contains("\"count\": 1", result);
+        Assert.Contains("\"totalCount\": 1", result);
+        Assert.Contains("\"page\": 1", result);
+        Assert.Contains("\"pageSize\": 20", result);
         Assert.Contains("Bug 1", result);
     }
 
     [Fact]
-    public async Task QueryWorkItems_WithCustomTop_ShouldClampValue()
+    public async Task QueryWorkItems_WithPagination_ShouldPassPageParameters()
     {
+        var paginatedResult = new PaginatedResult<WorkItemSummaryDto>
+        {
+            Items = [],
+            TotalCount = 100,
+            Page = 3,
+            PageSize = 10
+        };
+
         _mockService
-            .Setup(s => s.QueryWorkItemsAsync(It.IsAny<string>(), null, 200, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<WorkItemDto>());
+            .Setup(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), null, 3, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(paginatedResult);
 
-        await _tools.QueryWorkItems("SELECT * FROM WorkItems", top: 500);
+        var result = await _tools.QueryWorkItems("SELECT * FROM WorkItems", page: 3, pageSize: 10);
 
-        _mockService.Verify(s => s.QueryWorkItemsAsync(It.IsAny<string>(), null, 200, It.IsAny<CancellationToken>()), Times.Once);
+        _mockService.Verify(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), null, 3, 10, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("\"page\": 3", result);
+        Assert.Contains("\"pageSize\": 10", result);
     }
 
     [Fact]
-    public async Task QueryWorkItems_WithTopLessThanOne_ShouldClampToOne()
+    public async Task QueryWorkItems_WithProject_ShouldPassProjectToService()
     {
+        var paginatedResult = new PaginatedResult<WorkItemSummaryDto>
+        {
+            Items = [],
+            TotalCount = 0,
+            Page = 1,
+            PageSize = 20
+        };
+
         _mockService
-            .Setup(s => s.QueryWorkItemsAsync(It.IsAny<string>(), null, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<WorkItemDto>());
+            .Setup(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), "MyProject", 1, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(paginatedResult);
 
-        await _tools.QueryWorkItems("SELECT * FROM WorkItems", top: 0);
+        await _tools.QueryWorkItems("SELECT * FROM WorkItems", project: "MyProject");
 
-        _mockService.Verify(s => s.QueryWorkItemsAsync(It.IsAny<string>(), null, 1, It.IsAny<CancellationToken>()), Times.Once);
+        _mockService.Verify(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), "MyProject", 1, 20, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryWorkItems_ShouldReturnPaginationMetadata()
+    {
+        var paginatedResult = new PaginatedResult<WorkItemSummaryDto>
+        {
+            Items = [new WorkItemSummaryDto { Id = 1, Title = "Item" }],
+            TotalCount = 50,
+            Page = 2,
+            PageSize = 20
+        };
+
+        _mockService
+            .Setup(s => s.QueryWorkItemsSummaryAsync(It.IsAny<string>(), null, 2, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(paginatedResult);
+
+        var result = await _tools.QueryWorkItems("SELECT * FROM WorkItems", page: 2);
+
+        Assert.Contains("\"totalCount\": 50", result);
+        Assert.Contains("\"totalPages\": 3", result);
+        Assert.Contains("\"hasNextPage\": true", result);
+        Assert.Contains("\"hasPreviousPage\": true", result);
     }
 
     #endregion

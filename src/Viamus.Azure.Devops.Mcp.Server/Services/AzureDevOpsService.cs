@@ -192,7 +192,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 50);
+        pageSize = Math.Clamp(pageSize, 1, 20);
 
         try
         {
