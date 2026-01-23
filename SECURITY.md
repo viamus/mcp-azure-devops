@@ -59,7 +59,8 @@ Out of scope (for v1.0):
 As an early-stage project, the following considerations apply:
 
 - Authentication is based on **Azure DevOps Personal Access Tokens (PAT)**
-- The server is designed for **read-only access** to Work Items
+- The server provides **read-only access** to Git Repositories and **read-write access** to Work Items
+- Git file content retrieval may expose sensitive data if repositories contain secrets
 - No secrets are persisted; all credentials are provided via environment variables
 - Users are responsible for securing their runtime environment
 - Logging avoids sensitive data by design, but misconfiguration may expose information
@@ -94,8 +95,11 @@ We follow a **responsible disclosure** approach:
 
 For users running this server in production-like environments:
 
-- Use **minimal-scope PATs** (Work Items: Read only)
+- Use **minimal-scope PATs**:
+  - Work Items: Read (or Read & Write if comments are needed)
+  - Code: Read (for Git repository access)
 - Never commit `.env` files or secrets
+- Be aware that Git file content retrieval may expose sensitive files in repositories
 - Restrict network access to the MCP server
 - Monitor logs and usage patterns
 - Rotate PATs periodically

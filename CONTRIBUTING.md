@@ -4,9 +4,9 @@ CONTRIBUTING GUIDE
 Thank you for your interest in contributing to MCP Azure DevOps Server!
 
 This project provides a Model Context Protocol (MCP) server that exposes tools
-for interacting with Azure DevOps Work Items. Contributions of all kinds are
-welcome, including bug fixes, documentation improvements, new tools, refactors,
-and tests.
+for interacting with Azure DevOps Work Items and Git Repositories. Contributions
+of all kinds are welcome, including bug fixes, documentation improvements, new
+tools, refactors, and tests.
 
 ------------------------------------------------------------
 TABLE OF CONTENTS
@@ -26,9 +26,10 @@ TABLE OF CONTENTS
 7. Coding Standards
 8. Testing
 9. Adding a New MCP Tool
-10. Security
-11. Release Notes
-12. Getting Help
+10. Architecture Overview
+11. Security
+12. Release Notes
+13. Getting Help
 
 ------------------------------------------------------------
 1. CODE OF CONDUCT
@@ -44,10 +45,10 @@ All contributors are expected to interact professionally and respectfully.
 ------------------------------------------------------------
 
 - Provide a reliable MCP server for Azure DevOps integration
-- Offer useful, composable tools for Work Items (initial scope)
+- Offer useful, composable tools for Work Items and Git Repositories
 - Keep the server safe-by-default (minimal permissions, no secret leakage)
 - Maintain a clean and extensible architecture for future domains
-  (Repos, Pull Requests, Pipelines, etc.)
+  (Pull Requests, Pipelines, Boards, etc.)
 
 ------------------------------------------------------------
 3. WAYS TO CONTRIBUTE
@@ -72,7 +73,8 @@ PREREQUISITES
 - .NET 10 SDK
 - Docker (optional but recommended)
 - Azure DevOps Personal Access Token (PAT) with:
-  - Work Items: Read (minimum permission)
+  - Work Items: Read & Write
+  - Code: Read (for Git repository access)
 
 CLONE & CONFIGURE
 -----------------
@@ -144,6 +146,7 @@ Keep commits small and meaningful.
 Prefer Conventional Commits style:
 
 - feat: add get_work_items_by_area_path tool
+- feat: add Git repository browsing tools
 - fix: handle WIQL errors gracefully
 - docs: clarify PAT permissions
 - test: add unit tests for tool services
@@ -178,6 +181,7 @@ A good Pull Request includes:
 - Keep handlers/controllers thin
 - Put business logic in services
 - Keep models and DTOs explicit and simple
+- Use sealed records for DTOs (immutability)
 
 ------------------------------------------------------------
 8. TESTING
@@ -185,14 +189,26 @@ A good Pull Request includes:
 
 When behavior changes, tests should be added or updated.
 
+RUNNING TESTS
+-------------
+
+   dotnet test
+
+Or run specific tests:
+
+   dotnet test --filter "FullyQualifiedName~WorkItemToolsTests"
+   dotnet test --filter "FullyQualifiedName~GitToolsTests"
+
 Recommended testing layers:
 
 - Unit tests for services and mapping logic
 - Contract tests for MCP tool outputs
 - Integration tests for HTTP endpoints (optional but encouraged)
 
-If the project currently lacks tests, contributions that introduce a minimal
-testing foundation are highly welcome.
+Tests are located under:
+   tests/Viamus.Azure.Devops.Mcp.Server.Tests/
+       Models/           # DTO serialization and equality tests
+       Tools/            # Tool behavior tests with mocked services
 
 ------------------------------------------------------------
 9. ADDING A NEW MCP TOOL
@@ -211,41 +227,124 @@ Suggested steps:
 1. Add tool implementation under:
    src/Viamus.Azure.Devops.Mcp.Server/Tools/
 
+   - Use [McpServerToolType] attribute on the class
+   - Use [McpServerTool(Name = "tool_name")] on methods
+   - Use [Description] attributes for documentation
+   - Inject IAzureDevOpsService via constructor
+
 2. Add or extend Azure DevOps logic under:
    src/Viamus.Azure.Devops.Mcp.Server/Services/
+
+   - Add method signature to IAzureDevOpsService interface
+   - Implement in AzureDevOpsService class
+   - Use appropriate Azure DevOps SDK clients
 
 3. Add models/DTOs if needed under:
    src/Viamus.Azure.Devops.Mcp.Server/Models/
 
-4. Register the tool in the MCP tool registration flow
+   - Use sealed record for immutability
+   - Include XML documentation
+   - Keep fields nullable where appropriate
 
-5. Update documentation and add tests if applicable
+4. Tools are auto-registered via .WithToolsFromAssembly()
+
+5. Update documentation (README.md) and add tests
+
+EXAMPLE TOOL STRUCTURE
+----------------------
+
+   [McpServerToolType]
+   public sealed class MyTools
+   {
+       private readonly IAzureDevOpsService _service;
+       private static readonly JsonSerializerOptions JsonOptions = new()
+       {
+           WriteIndented = true,
+           PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+       };
+
+       public MyTools(IAzureDevOpsService service) => _service = service;
+
+       [McpServerTool(Name = "my_tool")]
+       [Description("Description of what this tool does")]
+       public async Task<string> MyTool(
+           [Description("Parameter description")] string param,
+           CancellationToken cancellationToken = default)
+       {
+           var result = await _service.MyMethodAsync(param, cancellationToken);
+           return JsonSerializer.Serialize(result, JsonOptions);
+       }
+   }
 
 ------------------------------------------------------------
-10. SECURITY
+10. ARCHITECTURE OVERVIEW
+------------------------------------------------------------
+
+PROJECT STRUCTURE
+-----------------
+
+src/Viamus.Azure.Devops.Mcp.Server/
+├── Configuration/
+│   └── AzureDevOpsOptions.cs      # Configuration binding
+├── Models/
+│   ├── WorkItemDto.cs             # Work item full details
+│   ├── WorkItemSummaryDto.cs      # Work item lightweight view
+│   ├── WorkItemCommentDto.cs      # Work item comment
+│   ├── PaginatedResult.cs         # Generic pagination wrapper
+│   ├── RepositoryDto.cs           # Git repository details
+│   ├── BranchDto.cs               # Git branch details
+│   ├── GitItemDto.cs              # Git file/folder item
+│   └── GitFileContentDto.cs       # Git file content
+├── Services/
+│   ├── IAzureDevOpsService.cs     # Service interface
+│   └── AzureDevOpsService.cs      # Implementation
+├── Tools/
+│   ├── WorkItemTools.cs           # Work Item MCP tools
+│   └── GitTools.cs                # Git Repository MCP tools
+└── Program.cs                     # Entry point and DI setup
+
+KEY PATTERNS
+------------
+
+- Dependency Injection: Services registered as singletons
+- Interface-based design: Enables testing with mocks
+- DTOs as sealed records: Immutability and value equality
+- Consistent JSON serialization: CamelCase, indented output
+- Error handling: JSON error responses, no exceptions to client
+
+AZURE DEVOPS SDK CLIENTS
+------------------------
+
+- WorkItemTrackingHttpClient: Work Items, WIQL queries, comments
+- GitHttpClient: Repositories, branches, items, file content
+
+------------------------------------------------------------
+11. SECURITY
 ------------------------------------------------------------
 
 - Never commit secrets (PATs, tokens, credentials)
 - Avoid logging sensitive data
 - Validate all external inputs
+- Sanitize user inputs in WIQL queries (escape single quotes)
 
 If you discover a security vulnerability:
 - Do NOT open a public issue
-- Contact the maintainers privately (define contact method here)
+- Contact the maintainers privately (see SECURITY.md)
 
 ------------------------------------------------------------
-11. RELEASE NOTES
+12. RELEASE NOTES
 ------------------------------------------------------------
 
 If your contribution changes behavior or adds a new tool, include a short
 release note suggestion in your PR description, for example:
 
+- Added: Git repository browsing tools (get_repositories, get_branches, etc.)
 - Added: support for filtering work items by area path
 - Fixed: WIQL query errors now return consistent tool responses
 - Changed: tool output now includes changedDate metadata
 
 ------------------------------------------------------------
-12. GETTING HELP
+13. GETTING HELP
 ------------------------------------------------------------
 
 If you need help:

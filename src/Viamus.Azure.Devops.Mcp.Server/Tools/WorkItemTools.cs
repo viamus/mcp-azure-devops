@@ -233,6 +233,28 @@ public sealed class WorkItemTools
         }, JsonOptions);
     }
 
+    [McpServerTool(Name = "add_work_item_comment")]
+    [Description("Adds a comment to a specific Azure DevOps work item. Use this to add notes, updates, or feedback to a work item.")]
+    public async Task<string> AddWorkItemComment(
+        [Description("The ID of the work item to comment on")] int workItemId,
+        [Description("The comment text to add")] string comment,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(comment))
+        {
+            return JsonSerializer.Serialize(new { error = "Comment text cannot be empty" }, JsonOptions);
+        }
+
+        var createdComment = await _azureDevOpsService.AddWorkItemCommentAsync(workItemId, comment, project, cancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Comment added to work item {workItemId}",
+            comment = createdComment
+        }, JsonOptions);
+    }
+
     private static List<int> ParseWorkItemIds(string workItemIds)
     {
         if (string.IsNullOrWhiteSpace(workItemIds))

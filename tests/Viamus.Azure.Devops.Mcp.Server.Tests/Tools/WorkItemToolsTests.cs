@@ -548,4 +548,69 @@ public class WorkItemToolsTests
     }
 
     #endregion
+
+    #region AddWorkItemComment Tests
+
+    [Fact]
+    public async Task AddWorkItemComment_WithValidComment_ShouldReturnSuccess()
+    {
+        var createdComment = new WorkItemCommentDto
+        {
+            Id = 1,
+            WorkItemId = 123,
+            Text = "This is a test comment",
+            CreatedBy = "John Doe",
+            CreatedDate = DateTime.UtcNow
+        };
+
+        _mockService
+            .Setup(s => s.AddWorkItemCommentAsync(123, "This is a test comment", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(createdComment);
+
+        var result = await _tools.AddWorkItemComment(123, "This is a test comment");
+
+        Assert.Contains("\"success\": true", result);
+        Assert.Contains("Comment added to work item 123", result);
+        Assert.Contains("This is a test comment", result);
+    }
+
+    [Fact]
+    public async Task AddWorkItemComment_WithEmptyComment_ShouldReturnError()
+    {
+        var result = await _tools.AddWorkItemComment(123, "");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Comment text cannot be empty", result);
+    }
+
+    [Fact]
+    public async Task AddWorkItemComment_WithWhitespaceComment_ShouldReturnError()
+    {
+        var result = await _tools.AddWorkItemComment(123, "   ");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Comment text cannot be empty", result);
+    }
+
+    [Fact]
+    public async Task AddWorkItemComment_WithProject_ShouldPassProjectToService()
+    {
+        var createdComment = new WorkItemCommentDto
+        {
+            Id = 1,
+            WorkItemId = 123,
+            Text = "Test comment",
+            CreatedBy = "John Doe"
+        };
+
+        _mockService
+            .Setup(s => s.AddWorkItemCommentAsync(123, "Test comment", "MyProject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(createdComment);
+
+        await _tools.AddWorkItemComment(123, "Test comment", "MyProject");
+
+        _mockService.Verify(s => s.AddWorkItemCommentAsync(123, "Test comment", "MyProject", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
 }

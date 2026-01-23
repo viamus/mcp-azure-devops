@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Microsoft.TeamFoundation.SourceControl.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
 using Microsoft.VisualStudio.Services.Common;
@@ -17,6 +18,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
     private readonly ILogger<AzureDevOpsService> _logger;
     private readonly VssConnection _connection;
     private readonly WorkItemTrackingHttpClient _witClient;
+    private readonly GitHttpClient _gitClient;
     private bool _disposed;
 
     private static readonly string[] DefaultFields =
@@ -59,6 +61,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         var credentials = new VssBasicCredential(string.Empty, _options.PersonalAccessToken);
         _connection = new VssConnection(new Uri(_options.OrganizationUrl), credentials);
         _witClient = _connection.GetClient<WorkItemTrackingHttpClient>();
+        _gitClient = _connection.GetClient<GitHttpClient>();
 
         _logger.LogInformation("Azure DevOps service initialized for organization: {OrganizationUrl}", _options.OrganizationUrl);
     }
@@ -352,11 +355,281 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         return null;
     }
 
+    public async Task<WorkItemCommentDto> AddWorkItemCommentAsync(
+        int workItemId,
+        string comment,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Adding comment to work item {WorkItemId}", workItemId);
+
+            var projectName = project ?? _options.DefaultProject;
+            var request = new CommentCreate { Text = comment };
+
+            var createdComment = await _witClient.AddCommentAsync(
+                request: request,
+                project: projectName,
+                workItemId: workItemId,
+                cancellationToken: cancellationToken);
+
+            return new WorkItemCommentDto
+            {
+                Id = createdComment.Id,
+                WorkItemId = workItemId,
+                Text = createdComment.Text,
+                CreatedBy = createdComment.CreatedBy?.DisplayName,
+                CreatedDate = createdComment.CreatedDate
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding comment to work item {WorkItemId}", workItemId);
+            throw;
+        }
+    }
+
+    #region Git Operations
+
+    public async Task<IReadOnlyList<RepositoryDto>> GetRepositoriesAsync(string? project = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting repositories for project {Project}", projectName);
+
+            var repositories = await _gitClient.GetRepositoriesAsync(
+                project: projectName,
+                cancellationToken: cancellationToken);
+
+            return repositories.Select(MapToRepositoryDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting repositories");
+            throw;
+        }
+    }
+
+    public async Task<RepositoryDto?> GetRepositoryAsync(string repositoryNameOrId, string? project = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting repository {Repository} for project {Project}", repositoryNameOrId, projectName);
+
+            var repository = await _gitClient.GetRepositoryAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                cancellationToken: cancellationToken);
+
+            return MapToRepositoryDto(repository);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting repository {Repository}", repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<BranchDto>> GetBranchesAsync(string repositoryNameOrId, string? project = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting branches for repository {Repository}", repositoryNameOrId);
+
+            var branches = await _gitClient.GetBranchesAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                cancellationToken: cancellationToken);
+
+            return branches.Select(MapToBranchDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting branches for repository {Repository}", repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<GitItemDto>> GetItemsAsync(
+        string repositoryNameOrId,
+        string path = "/",
+        string? branchName = null,
+        string? project = null,
+        string recursionLevel = "OneLevel",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting items at path {Path} in repository {Repository}", path, repositoryNameOrId);
+
+            var versionDescriptor = string.IsNullOrEmpty(branchName)
+                ? null
+                : new GitVersionDescriptor
+                {
+                    VersionType = GitVersionType.Branch,
+                    Version = branchName
+                };
+
+            var recursion = recursionLevel.ToLowerInvariant() switch
+            {
+                "none" => VersionControlRecursionType.None,
+                "full" => VersionControlRecursionType.Full,
+                _ => VersionControlRecursionType.OneLevel
+            };
+
+            var items = await _gitClient.GetItemsAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                scopePath: path,
+                recursionLevel: recursion,
+                versionDescriptor: versionDescriptor,
+                cancellationToken: cancellationToken);
+
+            return items.Select(MapToGitItemDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting items at path {Path} in repository {Repository}", path, repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<GitFileContentDto?> GetFileContentAsync(
+        string repositoryNameOrId,
+        string filePath,
+        string? branchName = null,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting file content at path {Path} in repository {Repository}", filePath, repositoryNameOrId);
+
+            var versionDescriptor = string.IsNullOrEmpty(branchName)
+                ? null
+                : new GitVersionDescriptor
+                {
+                    VersionType = GitVersionType.Branch,
+                    Version = branchName
+                };
+
+            // First get the item metadata
+            var item = await _gitClient.GetItemAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                path: filePath,
+                versionDescriptor: versionDescriptor,
+                includeContent: false,
+                cancellationToken: cancellationToken);
+
+            if (item == null)
+            {
+                return null;
+            }
+
+            // Check if it's a folder
+            if (item.IsFolder)
+            {
+                return new GitFileContentDto
+                {
+                    Path = item.Path,
+                    CommitId = item.CommitId,
+                    IsBinary = false,
+                    Content = null,
+                    Size = 0
+                };
+            }
+
+            // Get the content stream
+            using var contentStream = await _gitClient.GetItemContentAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                path: filePath,
+                versionDescriptor: versionDescriptor,
+                cancellationToken: cancellationToken);
+
+            // Read content as text
+            using var reader = new StreamReader(contentStream);
+            var content = await reader.ReadToEndAsync(cancellationToken);
+
+            // Simple binary detection - check for null bytes in first portion
+            var isBinary = content.Take(8000).Any(c => c == '\0');
+
+            return new GitFileContentDto
+            {
+                Path = item.Path,
+                CommitId = item.CommitId,
+                Content = isBinary ? "[Binary file content not shown]" : content,
+                IsBinary = isBinary,
+                Encoding = "UTF-8",
+                Size = content.Length
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file content at path {Path} in repository {Repository}", filePath, repositoryNameOrId);
+            throw;
+        }
+    }
+
+    private static RepositoryDto MapToRepositoryDto(GitRepository repository)
+    {
+        return new RepositoryDto
+        {
+            Id = repository.Id.ToString(),
+            Name = repository.Name,
+            Url = repository.Url,
+            DefaultBranch = repository.DefaultBranch,
+            Size = repository.Size,
+            RemoteUrl = repository.RemoteUrl,
+            SshUrl = repository.SshUrl,
+            WebUrl = repository.WebUrl,
+            ProjectId = repository.ProjectReference?.Id.ToString(),
+            ProjectName = repository.ProjectReference?.Name,
+            IsDisabled = repository.IsDisabled ?? false,
+            IsFork = repository.IsFork
+        };
+    }
+
+    private static BranchDto MapToBranchDto(GitBranchStats branch)
+    {
+        return new BranchDto
+        {
+            Name = branch.Name,
+            ObjectId = branch.Commit?.CommitId,
+            CreatorName = branch.Commit?.Author?.Name,
+            CreatorEmail = branch.Commit?.Author?.Email,
+            IsBaseVersion = branch.IsBaseVersion
+        };
+    }
+
+    private static GitItemDto MapToGitItemDto(GitItem item)
+    {
+        return new GitItemDto
+        {
+            ObjectId = item.ObjectId,
+            GitObjectType = item.GitObjectType.ToString(),
+            CommitId = item.CommitId,
+            Path = item.Path,
+            IsFolder = item.IsFolder,
+            Url = item.Url
+        };
+    }
+
+    #endregion
+
     public void Dispose()
     {
         if (_disposed) return;
 
         _witClient.Dispose();
+        _gitClient.Dispose();
         _connection.Dispose();
         _disposed = true;
     }
