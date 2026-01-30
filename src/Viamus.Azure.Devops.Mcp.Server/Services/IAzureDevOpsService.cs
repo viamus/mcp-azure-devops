@@ -138,4 +138,184 @@ public interface IAzureDevOpsService
         CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Pull Request Operations
+
+    /// <summary>
+    /// Gets pull requests for a repository with optional filters.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="status">Filter by status: active, completed, abandoned, or all.</param>
+    /// <param name="creatorId">Filter by creator's unique name or ID.</param>
+    /// <param name="reviewerId">Filter by reviewer's unique name or ID.</param>
+    /// <param name="sourceRefName">Filter by source branch (e.g., refs/heads/feature).</param>
+    /// <param name="targetRefName">Filter by target branch (e.g., refs/heads/main).</param>
+    /// <param name="top">Maximum number of results to return.</param>
+    /// <param name="skip">Number of results to skip for pagination.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of pull requests matching the filters.</returns>
+    Task<IReadOnlyList<PullRequestDto>> GetPullRequestsAsync(
+        string repositoryNameOrId,
+        string? project = null,
+        string? status = null,
+        string? creatorId = null,
+        string? reviewerId = null,
+        string? sourceRefName = null,
+        string? targetRefName = null,
+        int top = 50,
+        int skip = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific pull request by ID.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="pullRequestId">The pull request ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The pull request details.</returns>
+    Task<PullRequestDto?> GetPullRequestByIdAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets comment threads for a pull request.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="pullRequestId">The pull request ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of comment threads.</returns>
+    Task<IReadOnlyList<PullRequestThreadDto>> GetPullRequestThreadsAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches pull requests by title or description.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="searchText">Text to search for in title or description.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="status">Filter by status: active, completed, abandoned, or all.</param>
+    /// <param name="top">Maximum number of results to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of matching pull requests.</returns>
+    Task<IReadOnlyList<PullRequestDto>> SearchPullRequestsAsync(
+        string repositoryNameOrId,
+        string searchText,
+        string? project = null,
+        string? status = null,
+        int top = 50,
+        CancellationToken cancellationToken = default);
+
+    #endregion
+
+    #region Pipeline/Build Operations
+
+    /// <summary>
+    /// Gets all pipelines (build definitions) in a project.
+    /// </summary>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="name">Optional filter by pipeline name (supports wildcards).</param>
+    /// <param name="folder">Optional filter by folder path.</param>
+    /// <param name="top">Maximum number of results to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of pipelines.</returns>
+    Task<IReadOnlyList<PipelineDto>> GetPipelinesAsync(
+        string? project = null,
+        string? name = null,
+        string? folder = null,
+        int top = 100,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific pipeline by ID.
+    /// </summary>
+    /// <param name="pipelineId">The pipeline ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The pipeline details.</returns>
+    Task<PipelineDto?> GetPipelineAsync(
+        int pipelineId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets builds for a project with optional filters.
+    /// </summary>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="definitions">Optional list of pipeline definition IDs to filter by.</param>
+    /// <param name="branchName">Optional filter by source branch.</param>
+    /// <param name="statusFilter">Optional filter by status: all, inProgress, completed, cancelling, postponed, notStarted, none.</param>
+    /// <param name="resultFilter">Optional filter by result: succeeded, partiallySucceeded, failed, canceled, none.</param>
+    /// <param name="requestedFor">Optional filter by who requested the build.</param>
+    /// <param name="top">Maximum number of results to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of builds.</returns>
+    Task<IReadOnlyList<BuildDto>> GetBuildsAsync(
+        string? project = null,
+        IEnumerable<int>? definitions = null,
+        string? branchName = null,
+        string? statusFilter = null,
+        string? resultFilter = null,
+        string? requestedFor = null,
+        int top = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific build by ID.
+    /// </summary>
+    /// <param name="buildId">The build ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The build details.</returns>
+    Task<BuildDto?> GetBuildAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the logs for a build.
+    /// </summary>
+    /// <param name="buildId">The build ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of build logs.</returns>
+    Task<IReadOnlyList<BuildLogDto>> GetBuildLogsAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the content of a specific build log.
+    /// </summary>
+    /// <param name="buildId">The build ID.</param>
+    /// <param name="logId">The log ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The log content as a string.</returns>
+    Task<string?> GetBuildLogContentAsync(
+        int buildId,
+        int logId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the timeline (stages, jobs, tasks) for a build.
+    /// </summary>
+    /// <param name="buildId">The build ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of timeline records.</returns>
+    Task<IReadOnlyList<BuildTimelineRecordDto>> GetBuildTimelineAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    #endregion
 }

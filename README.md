@@ -1,6 +1,6 @@
 # MCP Azure DevOps Server
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Azure DevOps integration, enabling AI assistants to interact with Azure DevOps Work Items and Git Repositories.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Azure DevOps integration, enabling AI assistants to interact with Azure DevOps Work Items, Git Repositories, Pull Requests, and Pipelines.
 
 ## About
 
@@ -33,6 +33,30 @@ This project implements an MCP server that exposes tools for querying and managi
 | `get_file_content` | Gets the content of a specific file in a repository |
 | `search_repository_files` | Searches for files by path pattern in a repository |
 
+### Pull Request Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_pull_requests` | Lists pull requests with optional filters (status, creator, reviewer, branches) |
+| `get_pull_request` | Gets details of a specific pull request by ID |
+| `get_pull_request_threads` | Gets comment threads for a pull request |
+| `search_pull_requests` | Searches pull requests by text in title or description |
+| `query_pull_requests` | Advanced query with multiple combined filters |
+
+### Pipeline/Build Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_pipelines` | Lists all pipelines (build definitions) in a project |
+| `get_pipeline` | Gets details of a specific pipeline by ID |
+| `get_pipeline_runs` | Gets recent runs (builds) for a specific pipeline |
+| `get_build` | Gets details of a specific build by ID |
+| `get_builds` | Lists builds with optional filters (status, result, branch, requester) |
+| `get_build_logs` | Gets the list of log files for a build |
+| `get_build_log_content` | Gets the content of a specific build log |
+| `get_build_timeline` | Gets the timeline (stages, jobs, tasks) for a build |
+| `query_builds` | Advanced query with multiple combined filters |
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) (for local execution)
@@ -46,7 +70,8 @@ This project implements an MCP server that exposes tools for querying and managi
 3. Click **New Token**
 4. Configure the required permissions:
    - **Work Items**: Read & Write
-   - **Code**: Read (for Git repository access)
+   - **Code**: Read (for Git repository and Pull Request access)
+   - **Build**: Read (for Pipeline and Build access)
 5. Copy the generated token
 
 ## Configuration
@@ -109,18 +134,20 @@ dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r osx-arm64 -o ./p
 Access the health check endpoint:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:5000/health
 ```
 
 ## Configuring in Claude Desktop
 
 Add the following configuration to your Claude Desktop config file (`claude_desktop_config.json`):
 
+claude mcp add mcp-azure-devops --transport http <endpoint>
+
 ```json
 {
   "mcpServers": {
     "azure-devops": {
-      "url": "http://localhost:8080"
+      "url": "http://localhost:5000"
     }
   }
 }
@@ -135,7 +162,7 @@ Add to your MCP configuration file:
   "mcpServers": {
     "azure-devops": {
       "type": "http",
-      "url": "http://localhost:8080"
+      "url": "http://localhost:5000"
     }
   }
 }
@@ -163,6 +190,25 @@ After configuring the MCP client, you can ask questions like:
 - "Search for all .cs files in the 'api' repository"
 - "Show me the content of /src/Program.cs from the 'main' branch"
 
+### Pull Requests
+
+- "Show me all active pull requests in the 'my-repo' repository"
+- "Get details of pull request #123"
+- "What comments are on PR #456?"
+- "Search for pull requests related to 'authentication'"
+- "Show me PRs targeting the 'main' branch"
+- "List PRs created by user@email.com"
+
+### Pipelines and Builds
+
+- "List all pipelines in the project"
+- "Show me the recent builds for pipeline 'CI-Build'"
+- "What's the status of build #789?"
+- "Show me failed builds from the last week"
+- "Get the logs for build #456"
+- "Show me the timeline of build #123"
+- "What builds are currently in progress?"
+
 ## Project Structure
 
 ```
@@ -177,13 +223,23 @@ After configuring the MCP client, you can ask questions like:
 │       │   ├── RepositoryDto.cs
 │       │   ├── BranchDto.cs
 │       │   ├── GitItemDto.cs
-│       │   └── GitFileContentDto.cs
+│       │   ├── GitFileContentDto.cs
+│       │   ├── PullRequestDto.cs
+│       │   ├── PullRequestReviewerDto.cs
+│       │   ├── PullRequestThreadDto.cs
+│       │   ├── PullRequestCommentDto.cs
+│       │   ├── PipelineDto.cs
+│       │   ├── BuildDto.cs
+│       │   ├── BuildLogDto.cs
+│       │   └── BuildTimelineRecordDto.cs
 │       ├── Services/          # Azure DevOps integration services
 │       │   ├── IAzureDevOpsService.cs
 │       │   └── AzureDevOpsService.cs
 │       ├── Tools/             # Exposed MCP tools
 │       │   ├── WorkItemTools.cs
-│       │   └── GitTools.cs
+│       │   ├── GitTools.cs
+│       │   ├── PullRequestTools.cs
+│       │   └── PipelineTools.cs
 │       └── Program.cs         # Application entry point
 ├── tests/
 │   └── Viamus.Azure.Devops.Mcp.Server.Tests/
@@ -222,6 +278,45 @@ Represents a file or folder in a repository with Path, ObjectId, GitObjectType, 
 
 #### GitFileContentDto
 File content with Path, Content (text), IsBinary flag, Encoding, and Size.
+
+### Pull Request DTOs
+
+#### PullRequestDto
+Complete pull request details including:
+- PullRequestId, Title, Description
+- SourceBranch, TargetBranch
+- Status (Active, Abandoned, Completed)
+- CreatedBy, CreationDate, ClosedDate
+- Reviewers list, MergeStatus, IsDraft
+- Repository and Project information
+
+#### PullRequestReviewerDto
+Reviewer information including DisplayName, Vote (-10 to 10), IsRequired, and HasDeclined status.
+
+#### PullRequestThreadDto
+Comment thread with Id, Status (Active, Fixed, etc.), FilePath, LineNumber, and Comments list.
+
+#### PullRequestCommentDto
+Individual comment with Id, Content, Author, timestamps, and CommentType.
+
+### Pipeline/Build DTOs
+
+#### PipelineDto
+Pipeline (build definition) details including Id, Name, Folder, ConfigurationType, and QueueStatus.
+
+#### BuildDto
+Comprehensive build information including:
+- Id, BuildNumber, Status, Result
+- SourceBranch, SourceVersion
+- RequestedBy, RequestedFor
+- QueueTime, StartTime, FinishTime
+- Definition details, LogsUrl, Reason, Priority
+
+#### BuildLogDto
+Build log metadata with Id, Type, Url, LineCount, and timestamps.
+
+#### BuildTimelineRecordDto
+Timeline record (stage, job, or task) with Id, ParentId, Type, Name, State, Result, timing information, and error/warning counts.
 
 ## License
 

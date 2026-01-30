@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Microsoft.TeamFoundation.Build.WebApi;
 using Microsoft.TeamFoundation.SourceControl.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
@@ -19,6 +20,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
     private readonly VssConnection _connection;
     private readonly WorkItemTrackingHttpClient _witClient;
     private readonly GitHttpClient _gitClient;
+    private readonly BuildHttpClient _buildClient;
     private bool _disposed;
 
     private static readonly string[] DefaultFields =
@@ -62,6 +64,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         _connection = new VssConnection(new Uri(_options.OrganizationUrl), credentials);
         _witClient = _connection.GetClient<WorkItemTrackingHttpClient>();
         _gitClient = _connection.GetClient<GitHttpClient>();
+        _buildClient = _connection.GetClient<BuildHttpClient>();
 
         _logger.LogInformation("Azure DevOps service initialized for organization: {OrganizationUrl}", _options.OrganizationUrl);
     }
@@ -624,12 +627,532 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
     #endregion
 
+    #region Pull Request Operations
+
+    public async Task<IReadOnlyList<PullRequestDto>> GetPullRequestsAsync(
+        string repositoryNameOrId,
+        string? project = null,
+        string? status = null,
+        string? creatorId = null,
+        string? reviewerId = null,
+        string? sourceRefName = null,
+        string? targetRefName = null,
+        int top = 50,
+        int skip = 0,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting pull requests for repository {Repository}", repositoryNameOrId);
+
+            var searchCriteria = new GitPullRequestSearchCriteria
+            {
+                Status = ParsePullRequestStatus(status),
+                CreatorId = string.IsNullOrEmpty(creatorId) ? null : Guid.TryParse(creatorId, out var cid) ? cid : null,
+                ReviewerId = string.IsNullOrEmpty(reviewerId) ? null : Guid.TryParse(reviewerId, out var rid) ? rid : null,
+                SourceRefName = sourceRefName,
+                TargetRefName = targetRefName
+            };
+
+            var pullRequests = await _gitClient.GetPullRequestsAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                searchCriteria: searchCriteria,
+                top: top,
+                skip: skip,
+                cancellationToken: cancellationToken);
+
+            return pullRequests.Select(MapToPullRequestDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pull requests for repository {Repository}", repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<PullRequestDto?> GetPullRequestByIdAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
+
+            var pullRequest = await _gitClient.GetPullRequestAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                pullRequestId: pullRequestId,
+                cancellationToken: cancellationToken);
+
+            return MapToPullRequestDto(pullRequest);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<PullRequestThreadDto>> GetPullRequestThreadsAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting threads for pull request {PullRequestId}", pullRequestId);
+
+            var threads = await _gitClient.GetThreadsAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                pullRequestId: pullRequestId,
+                cancellationToken: cancellationToken);
+
+            return threads.Select(MapToPullRequestThreadDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting threads for pull request {PullRequestId}", pullRequestId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<PullRequestDto>> SearchPullRequestsAsync(
+        string repositoryNameOrId,
+        string searchText,
+        string? project = null,
+        string? status = null,
+        int top = 50,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Searching pull requests with text '{SearchText}' in repository {Repository}", searchText, repositoryNameOrId);
+
+            // Get pull requests with status filter
+            var searchCriteria = new GitPullRequestSearchCriteria
+            {
+                Status = ParsePullRequestStatus(status)
+            };
+
+            var pullRequests = await _gitClient.GetPullRequestsAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                searchCriteria: searchCriteria,
+                top: 200, // Get more to filter locally
+                cancellationToken: cancellationToken);
+
+            // Filter by search text in title or description
+            var searchLower = searchText.ToLowerInvariant();
+            var filtered = pullRequests
+                .Where(pr =>
+                    (pr.Title?.ToLowerInvariant().Contains(searchLower) ?? false) ||
+                    (pr.Description?.ToLowerInvariant().Contains(searchLower) ?? false))
+                .Take(top)
+                .Select(MapToPullRequestDto)
+                .ToList();
+
+            return filtered;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching pull requests with text '{SearchText}'", searchText);
+            throw;
+        }
+    }
+
+    private static PullRequestStatus? ParsePullRequestStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status))
+            return null;
+
+        return status.ToLowerInvariant() switch
+        {
+            "active" => PullRequestStatus.Active,
+            "completed" => PullRequestStatus.Completed,
+            "abandoned" => PullRequestStatus.Abandoned,
+            "all" => PullRequestStatus.All,
+            _ => null
+        };
+    }
+
+    private static PullRequestDto MapToPullRequestDto(GitPullRequest pr)
+    {
+        return new PullRequestDto
+        {
+            PullRequestId = pr.PullRequestId,
+            Title = pr.Title,
+            Description = pr.Description,
+            SourceBranch = pr.SourceRefName,
+            TargetBranch = pr.TargetRefName,
+            Status = pr.Status.ToString(),
+            CreatedBy = pr.CreatedBy?.DisplayName,
+            CreationDate = pr.CreationDate,
+            ClosedDate = pr.ClosedDate,
+            MergeStatus = pr.MergeStatus.ToString(),
+            IsDraft = pr.IsDraft ?? false,
+            RepositoryName = pr.Repository?.Name,
+            RepositoryId = pr.Repository?.Id.ToString(),
+            ProjectName = pr.Repository?.ProjectReference?.Name,
+            Url = pr.Url,
+            Reviewers = pr.Reviewers?.Select(r => new PullRequestReviewerDto
+            {
+                Id = r.Id,
+                DisplayName = r.DisplayName,
+                UniqueName = r.UniqueName,
+                Vote = r.Vote,
+                IsRequired = r.IsRequired,
+                HasDeclined = r.HasDeclined ?? false,
+                ImageUrl = r.ImageUrl
+            }).ToList()
+        };
+    }
+
+    private static PullRequestThreadDto MapToPullRequestThreadDto(GitPullRequestCommentThread thread)
+    {
+        return new PullRequestThreadDto
+        {
+            Id = thread.Id,
+            Status = thread.Status.ToString(),
+            FilePath = thread.ThreadContext?.FilePath,
+            LineNumber = thread.ThreadContext?.RightFileStart?.Line,
+            PublishedDate = thread.PublishedDate,
+            LastUpdatedDate = thread.LastUpdatedDate,
+            Comments = thread.Comments?.Select(c => new PullRequestCommentDto
+            {
+                Id = c.Id,
+                ParentCommentId = c.ParentCommentId,
+                Content = c.Content,
+                Author = c.Author?.DisplayName,
+                PublishedDate = c.PublishedDate,
+                LastUpdatedDate = c.LastUpdatedDate,
+                CommentType = c.CommentType.ToString()
+            }).ToList()
+        };
+    }
+
+    #endregion
+
+    #region Pipeline/Build Operations
+
+    public async Task<IReadOnlyList<PipelineDto>> GetPipelinesAsync(
+        string? project = null,
+        string? name = null,
+        string? folder = null,
+        int top = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting pipelines for project {Project}", projectName);
+
+            var definitions = await _buildClient.GetDefinitionsAsync(
+                project: projectName,
+                name: name,
+                path: folder,
+                top: top,
+                cancellationToken: cancellationToken);
+
+            return definitions.Select(MapToPipelineDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pipelines for project");
+            throw;
+        }
+    }
+
+    public async Task<PipelineDto?> GetPipelineAsync(
+        int pipelineId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting pipeline {PipelineId}", pipelineId);
+
+            var definition = await _buildClient.GetDefinitionAsync(
+                project: projectName,
+                definitionId: pipelineId,
+                cancellationToken: cancellationToken);
+
+            return MapToPipelineDto(definition);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pipeline {PipelineId}", pipelineId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<BuildDto>> GetBuildsAsync(
+        string? project = null,
+        IEnumerable<int>? definitions = null,
+        string? branchName = null,
+        string? statusFilter = null,
+        string? resultFilter = null,
+        string? requestedFor = null,
+        int top = 50,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting builds for project {Project}", projectName);
+
+            var builds = await _buildClient.GetBuildsAsync(
+                project: projectName,
+                definitions: definitions?.ToList(),
+                branchName: branchName,
+                statusFilter: ParseBuildStatus(statusFilter),
+                resultFilter: ParseBuildResult(resultFilter),
+                requestedFor: requestedFor,
+                top: top,
+                cancellationToken: cancellationToken);
+
+            return builds.Select(MapToBuildDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting builds for project");
+            throw;
+        }
+    }
+
+    public async Task<BuildDto?> GetBuildAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting build {BuildId}", buildId);
+
+            var build = await _buildClient.GetBuildAsync(
+                project: projectName,
+                buildId: buildId,
+                cancellationToken: cancellationToken);
+
+            return MapToBuildDto(build);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting build {BuildId}", buildId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<BuildLogDto>> GetBuildLogsAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting logs for build {BuildId}", buildId);
+
+            var logs = await _buildClient.GetBuildLogsAsync(
+                project: projectName,
+                buildId: buildId,
+                cancellationToken: cancellationToken);
+
+            return logs.Select(MapToBuildLogDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting logs for build {BuildId}", buildId);
+            throw;
+        }
+    }
+
+    public async Task<string?> GetBuildLogContentAsync(
+        int buildId,
+        int logId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting log content for build {BuildId}, log {LogId}", buildId, logId);
+
+            var logLines = await _buildClient.GetBuildLogLinesAsync(
+                project: projectName,
+                buildId: buildId,
+                logId: logId,
+                cancellationToken: cancellationToken);
+
+            return logLines != null ? string.Join(Environment.NewLine, logLines) : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting log content for build {BuildId}, log {LogId}", buildId, logId);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<BuildTimelineRecordDto>> GetBuildTimelineAsync(
+        int buildId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting timeline for build {BuildId}", buildId);
+
+            var timeline = await _buildClient.GetBuildTimelineAsync(
+                project: projectName,
+                buildId: buildId,
+                cancellationToken: cancellationToken);
+
+            if (timeline?.Records == null)
+            {
+                return [];
+            }
+
+            return timeline.Records.Select(MapToBuildTimelineRecordDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting timeline for build {BuildId}", buildId);
+            throw;
+        }
+    }
+
+    private static BuildStatus? ParseBuildStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status))
+            return null;
+
+        return status.ToLowerInvariant() switch
+        {
+            "all" => BuildStatus.All,
+            "inprogress" => BuildStatus.InProgress,
+            "completed" => BuildStatus.Completed,
+            "cancelling" => BuildStatus.Cancelling,
+            "postponed" => BuildStatus.Postponed,
+            "notstarted" => BuildStatus.NotStarted,
+            "none" => BuildStatus.None,
+            _ => null
+        };
+    }
+
+    private static BuildResult? ParseBuildResult(string? result)
+    {
+        if (string.IsNullOrEmpty(result))
+            return null;
+
+        return result.ToLowerInvariant() switch
+        {
+            "succeeded" => BuildResult.Succeeded,
+            "partiallysucceeded" => BuildResult.PartiallySucceeded,
+            "failed" => BuildResult.Failed,
+            "canceled" => BuildResult.Canceled,
+            "none" => BuildResult.None,
+            _ => null
+        };
+    }
+
+    private static PipelineDto MapToPipelineDto(BuildDefinitionReference definition)
+    {
+        return new PipelineDto
+        {
+            Id = definition.Id,
+            Name = definition.Name,
+            Folder = definition.Path,
+            Path = definition.Path,
+            QueueStatus = definition.QueueStatus.ToString(),
+            Revision = definition.Revision,
+            Url = definition.Url,
+            ProjectId = definition.Project?.Id.ToString(),
+            ProjectName = definition.Project?.Name,
+            CreatedDate = definition.CreatedDate
+        };
+    }
+
+    private static BuildDto MapToBuildDto(Build build)
+    {
+        return new BuildDto
+        {
+            Id = build.Id,
+            BuildNumber = build.BuildNumber,
+            Status = build.Status?.ToString(),
+            Result = build.Result?.ToString(),
+            SourceBranch = build.SourceBranch,
+            SourceVersion = build.SourceVersion,
+            RequestedBy = build.RequestedBy?.DisplayName,
+            RequestedFor = build.RequestedFor?.DisplayName,
+            QueueTime = build.QueueTime,
+            StartTime = build.StartTime,
+            FinishTime = build.FinishTime,
+            DefinitionId = build.Definition?.Id,
+            DefinitionName = build.Definition?.Name,
+            ProjectId = build.Project?.Id.ToString(),
+            ProjectName = build.Project?.Name,
+            Url = build.Url,
+            LogsUrl = build.Logs?.Url,
+            Reason = build.Reason.ToString(),
+            Priority = build.Priority.ToString(),
+            RepositoryId = build.Repository?.Id,
+            RepositoryName = build.Repository?.Name
+        };
+    }
+
+    private static BuildLogDto MapToBuildLogDto(BuildLog log)
+    {
+        return new BuildLogDto
+        {
+            Id = log.Id,
+            Type = log.Type,
+            Url = log.Url,
+            LineCount = (int)log.LineCount,
+            CreatedOn = log.CreatedOn,
+            LastChangedOn = log.LastChangedOn
+        };
+    }
+
+    private static BuildTimelineRecordDto MapToBuildTimelineRecordDto(TimelineRecord record)
+    {
+        return new BuildTimelineRecordDto
+        {
+            Id = record.Id.ToString(),
+            ParentId = record.ParentId?.ToString(),
+            Type = record.RecordType,
+            Name = record.Name,
+            State = record.State?.ToString(),
+            Result = record.Result?.ToString(),
+            Order = record.Order ?? 0,
+            StartTime = record.StartTime,
+            FinishTime = record.FinishTime,
+            ErrorCount = record.ErrorCount,
+            WarningCount = record.WarningCount,
+            LogUrl = record.Log?.Url,
+            PercentComplete = record.PercentComplete
+        };
+    }
+
+    #endregion
+
     public void Dispose()
     {
         if (_disposed) return;
 
         _witClient.Dispose();
         _gitClient.Dispose();
+        _buildClient.Dispose();
         _connection.Dispose();
         _disposed = true;
     }
