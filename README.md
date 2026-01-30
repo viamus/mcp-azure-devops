@@ -61,6 +61,36 @@ You should see: `Healthy`
 
 ---
 
+## Automated Installation (Windows)
+
+For Windows users, a PowerShell script is available that automates the entire setup process:
+
+```powershell
+# Download and run the installer (as Administrator)
+irm https://raw.githubusercontent.com/viamus/mcp-azure-devops/main/install-mcp-azure-devops.ps1 -OutFile install-mcp-azure-devops.ps1
+
+.\install-mcp-azure-devops.ps1 `
+    -OrganizationUrl "https://dev.azure.com/your-organization" `
+    -PersonalAccessToken "your-pat-token" `
+    -DefaultProject "your-project-name"
+```
+
+The script will automatically:
+- Install .NET 10 SDK (if not present)
+- Install Node.js (if not present)
+- Install Claude Code CLI (if not present)
+- Clone the repository
+- Configure your Azure DevOps credentials
+- Register the MCP server with Claude Code (HTTP transport)
+
+After installation, start the server:
+```powershell
+cd $env:USERPROFILE\mcp-azure-devops
+dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
+```
+
+---
+
 ## About
 
 This project implements an MCP server that exposes tools for querying and managing Work Items and Git Repositories in Azure DevOps. It can be used with any compatible MCP client, such as Claude Desktop, Claude Code, or other assistants that support the protocol.
