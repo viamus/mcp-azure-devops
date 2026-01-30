@@ -105,10 +105,10 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var workItems = await _witClient.GetWorkItemsAsync(
                 project: project ?? _options.DefaultProject,
                 ids: ids,
-                fields: DefaultFields,
+                expand: WorkItemExpand.All,
                 cancellationToken: cancellationToken);
 
-            return workItems.Select(wi => MapToDto(wi)).ToList();
+            return workItems.Select(wi => MapToDto(wi, includeAllFields: true)).ToList();
         }
         catch (Exception ex)
         {
@@ -333,7 +333,93 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             }
         }
 
+        // Extract linked commits and pull requests from relations
+        if (workItem.Relations != null && workItem.Relations.Count > 0)
+        {
+            var linkedCommits = new List<WorkItemCommitLinkDto>();
+            var linkedPullRequests = new List<WorkItemPullRequestLinkDto>();
+
+            foreach (var relation in workItem.Relations)
+            {
+                if (relation.Rel == "ArtifactLink" && !string.IsNullOrEmpty(relation.Url))
+                {
+                    // Commit URL format: vstfs:///Git/Commit/{projectId}%2F{repoId}%2F{commitId}
+                    // Pull Request URL format: vstfs:///Git/PullRequestId/{projectId}%2F{repoId}%2F{prId}
+                    var decodedUrl = Uri.UnescapeDataString(relation.Url);
+
+                    if (decodedUrl.Contains("/Git/Commit/"))
+                    {
+                        var commitInfo = ExtractGitArtifactInfo(decodedUrl, "/Git/Commit/");
+                        if (commitInfo != null)
+                        {
+                            linkedCommits.Add(new WorkItemCommitLinkDto
+                            {
+                                CommitId = commitInfo.Value.artifactId,
+                                RepositoryId = commitInfo.Value.repositoryId,
+                                Url = relation.Url
+                            });
+                        }
+                    }
+                    else if (decodedUrl.Contains("/Git/PullRequestId/"))
+                    {
+                        var prInfo = ExtractGitArtifactInfo(decodedUrl, "/Git/PullRequestId/");
+                        if (prInfo != null && int.TryParse(prInfo.Value.artifactId, out var prId))
+                        {
+                            linkedPullRequests.Add(new WorkItemPullRequestLinkDto
+                            {
+                                PullRequestId = prId,
+                                RepositoryId = prInfo.Value.repositoryId,
+                                Url = relation.Url
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (linkedCommits.Count > 0)
+            {
+                dto = dto with { LinkedCommits = linkedCommits };
+            }
+            if (linkedPullRequests.Count > 0)
+            {
+                dto = dto with { LinkedPullRequests = linkedPullRequests };
+            }
+        }
+
         return dto;
+    }
+
+    /// <summary>
+    /// Extracts repository ID and artifact ID from a Git artifact URL.
+    /// URL format: vstfs:///Git/{Type}/{projectId}/{repoId}/{artifactId}
+    /// </summary>
+    private static (string? repositoryId, string? artifactId)? ExtractGitArtifactInfo(string url, string typeSegment)
+    {
+        try
+        {
+            var startIndex = url.IndexOf(typeSegment, StringComparison.OrdinalIgnoreCase);
+            if (startIndex < 0) return null;
+
+            var pathPart = url[(startIndex + typeSegment.Length)..];
+            var segments = pathPart.Split('/');
+
+            // Expected format: {projectId}/{repoId}/{artifactId}
+            if (segments.Length >= 3)
+            {
+                return (segments[1], segments[2]);
+            }
+            // Some formats may be: {repoId}/{artifactId}
+            else if (segments.Length >= 2)
+            {
+                return (segments[0], segments[1]);
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static T? GetFieldValue<T>(IDictionary<string, object> fields, string fieldName)
@@ -694,6 +780,30 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
+            throw;
+        }
+    }
+
+    public async Task<PullRequestDto?> GetPullRequestByIdOnlyAsync(
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Getting pull request {PullRequestId} at project level", pullRequestId);
+
+            var pullRequest = await _gitClient.GetPullRequestByIdAsync(
+                pullRequestId: pullRequestId,
+                project: projectName,
+                cancellationToken: cancellationToken);
+
+            return MapToPullRequestDto(pullRequest);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pull request {PullRequestId} at project level", pullRequestId);
             throw;
         }
     }

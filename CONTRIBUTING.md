@@ -1,171 +1,161 @@
-CONTRIBUTING GUIDE
-=================
+# Contributing Guide
 
 Thank you for your interest in contributing to MCP Azure DevOps Server!
 
-This project provides a Model Context Protocol (MCP) server that exposes tools
-for interacting with Azure DevOps Work Items and Git Repositories. Contributions
-of all kinds are welcome, including bug fixes, documentation improvements, new
-tools, refactors, and tests.
+This project provides a Model Context Protocol (MCP) server that exposes tools for interacting with Azure DevOps Work Items, Git Repositories, Pull Requests, and Pipelines. Contributions of all kinds are welcome, including bug fixes, documentation improvements, new tools, refactors, and tests.
 
-------------------------------------------------------------
-TABLE OF CONTENTS
-------------------------------------------------------------
+---
 
-1. Code of Conduct
-2. Project Goals
-3. Ways to Contribute
-4. Development Setup
-   - Prerequisites
-   - Clone & Configure
-   - Run Locally
-   - Run with Docker
-   - Health Check
-5. Branching & Workflow
-6. Commit & PR Guidelines
-7. Coding Standards
-8. Testing
-9. Adding a New MCP Tool
-10. Architecture Overview
-11. Security
-12. Release Notes
-13. Getting Help
+## Table of Contents
 
-------------------------------------------------------------
-1. CODE OF CONDUCT
-------------------------------------------------------------
+- [Code of Conduct](#code-of-conduct)
+- [Project Goals](#project-goals)
+- [Ways to Contribute](#ways-to-contribute)
+- [Development Setup](#development-setup)
+- [Branching & Workflow](#branching--workflow)
+- [Commit & PR Guidelines](#commit--pr-guidelines)
+- [Coding Standards](#coding-standards)
+- [Testing](#testing)
+- [Adding a New MCP Tool](#adding-a-new-mcp-tool)
+- [Architecture Overview](#architecture-overview)
+- [Security](#security)
+- [Getting Help](#getting-help)
+
+---
+
+## Code of Conduct
 
 Be respectful, constructive, and collaborative.
 
-Harassment, discrimination, or abusive behavior will not be tolerated.
-All contributors are expected to interact professionally and respectfully.
+Harassment, discrimination, or abusive behavior will not be tolerated. All contributors are expected to interact professionally and respectfully. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details.
 
-------------------------------------------------------------
-2. PROJECT GOALS
-------------------------------------------------------------
+---
+
+## Project Goals
 
 - Provide a reliable MCP server for Azure DevOps integration
-- Offer useful, composable tools for Work Items and Git Repositories
+- Offer useful, composable tools for Work Items, Git Repositories, Pull Requests, and Pipelines
 - Keep the server safe-by-default (minimal permissions, no secret leakage)
-- Maintain a clean and extensible architecture for future domains
-  (Pull Requests, Pipelines, Boards, etc.)
+- Maintain a clean and extensible architecture for future domains (Boards, Wikis, etc.)
 
-------------------------------------------------------------
-3. WAYS TO CONTRIBUTE
-------------------------------------------------------------
+---
+
+## Ways to Contribute
 
 You can contribute by:
 
-- Reporting bugs with clear reproduction steps
-- Improving documentation (README, examples, guides)
-- Adding new MCP tools or extending existing ones
-- Improving logging, error handling, and observability
-- Writing or improving tests
-- Refactoring code for clarity and maintainability
+- **Reporting bugs** with clear reproduction steps
+- **Improving documentation** (README, examples, guides)
+- **Adding new MCP tools** or extending existing ones
+- **Improving logging**, error handling, and observability
+- **Writing or improving tests**
+- **Refactoring code** for clarity and maintainability
 
-------------------------------------------------------------
-4. DEVELOPMENT SETUP
-------------------------------------------------------------
+---
 
-PREREQUISITES
--------------
+## Development Setup
 
-- .NET 10 SDK
-- Docker (optional but recommended)
-- Azure DevOps Personal Access Token (PAT) with:
-  - Work Items: Read & Write
-  - Code: Read (for Git repository access)
+### Prerequisites
 
-CLONE & CONFIGURE
------------------
+| Requirement | Version | Purpose |
+|-------------|---------|---------|
+| .NET SDK | 10.0+ | Build and run |
+| Docker | Latest | Container deployment (optional) |
+| Azure DevOps PAT | - | API authentication |
 
-1. Clone the repository:
+**PAT Required Scopes:**
+- Work Items: Read & Write
+- Code: Read
+- Build: Read
 
-   git clone <REPO_URL>
-   cd <REPO_FOLDER>
+### Clone & Configure
 
-2. Create a local environment file:
+```bash
+# 1. Clone the repository
+git clone https://github.com/viamus/mcp-azure-devops.git
+cd mcp-azure-devops
 
-   cp .env.example .env
+# 2. Create environment file
+cp .env.example .env
 
-3. Edit the .env file:
+# 3. Edit .env with your credentials
+```
 
-   AZURE_DEVOPS_ORG_URL=https://dev.azure.com/your-organization
-   AZURE_DEVOPS_PAT=your-token-here
-   AZURE_DEVOPS_DEFAULT_PROJECT=your-project
+> **Warning**: Never commit `.env` files or hardcode credentials!
 
-IMPORTANT:
-- Do NOT commit .env files or secrets.
-- Never hardcode credentials.
+### Run Locally
 
-RUN LOCALLY
------------
+```bash
+# Using .NET CLI
+dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 
-   cd src/Viamus.Azure.Devops.Mcp.Server
-   dotnet run
+# Using Docker
+docker compose up -d
+```
 
-RUN WITH DOCKER
----------------
+### Verify Setup
 
-   docker compose up -d
+```bash
+# .NET CLI (port 5000)
+curl http://localhost:5000/health
 
-The server will be available at:
-- http://localhost:8080
+# Docker (port 8080)
+curl http://localhost:8080/health
+```
 
-HEALTH CHECK
-------------
+---
 
-   curl http://localhost:8080/health
+## Branching & Workflow
 
-------------------------------------------------------------
-5. BRANCHING & WORKFLOW
-------------------------------------------------------------
+The `main` branch must remain stable. Create feature branches using these patterns:
 
-- The main branch must remain stable.
-- Create feature branches using one of the following patterns:
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `feat/` | New features | `feat/add-wiki-tools` |
+| `fix/` | Bug fixes | `fix/wiql-query-error` |
+| `docs/` | Documentation | `docs/improve-readme` |
+| `chore/` | Maintenance | `chore/update-deps` |
+| `test/` | Test additions | `test/pipeline-tools` |
 
-  feat/<short-description>
-  fix/<short-description>
-  docs/<short-description>
-  chore/<short-description>
+### Workflow
 
-Workflow:
-1. Create a branch from main
+1. Create a branch from `main`
 2. Make your changes
-3. Add or update tests when applicable
-4. Open a Pull Request targeting main
+3. Add or update tests
+4. Run tests locally: `dotnet test`
+5. Open a Pull Request targeting `main`
 
-------------------------------------------------------------
-6. COMMIT & PR GUIDELINES
-------------------------------------------------------------
+---
 
-COMMITS
--------
+## Commit & PR Guidelines
 
-Keep commits small and meaningful.
-Prefer Conventional Commits style:
+### Commits
 
-- feat: add get_work_items_by_area_path tool
-- feat: add Git repository browsing tools
-- fix: handle WIQL errors gracefully
-- docs: clarify PAT permissions
-- test: add unit tests for tool services
-- chore: bump dependencies
+Use [Conventional Commits](https://www.conventionalcommits.org/) style:
 
-PULL REQUESTS
--------------
+```
+feat: add get_work_items_by_area_path tool
+fix: handle WIQL errors gracefully
+docs: clarify PAT permissions
+test: add unit tests for pipeline tools
+chore: bump dependencies
+```
 
-A good Pull Request includes:
+### Pull Requests
 
-- What changed and why
+A good PR includes:
+
+- **What** changed and **why**
 - Link to related issue (if applicable)
 - Notes about breaking changes (avoid if possible)
 - Confirmation that no secrets were introduced
 - Logs or screenshots when helpful
 
-------------------------------------------------------------
-7. CODING STANDARDS
-------------------------------------------------------------
+---
+
+## Coding Standards
+
+### General Principles
 
 - Prefer clarity over cleverness
 - Keep MCP tools focused (single responsibility)
@@ -173,191 +163,197 @@ A good Pull Request includes:
 - Validate inputs and return consistent outputs
 - Errors should be actionable and safe
 
-.NET GUIDELINES
----------------
+### .NET Guidelines
 
-- Use async/await consistently for IO operations
+- Use `async/await` consistently for I/O operations
 - Favor dependency injection
 - Keep handlers/controllers thin
 - Put business logic in services
 - Keep models and DTOs explicit and simple
-- Use sealed records for DTOs (immutability)
+- Use `sealed record` for DTOs (immutability)
 
-------------------------------------------------------------
-8. TESTING
-------------------------------------------------------------
+---
+
+## Testing
 
 When behavior changes, tests should be added or updated.
 
-RUNNING TESTS
--------------
+### Running Tests
 
-   dotnet test
+```bash
+# All tests
+dotnet test
 
-Or run specific tests:
+# Specific test class
+dotnet test --filter "FullyQualifiedName~WorkItemToolsTests"
+dotnet test --filter "FullyQualifiedName~GitToolsTests"
+dotnet test --filter "FullyQualifiedName~PullRequestToolsTests"
+dotnet test --filter "FullyQualifiedName~PipelineToolsTests"
 
-   dotnet test --filter "FullyQualifiedName~WorkItemToolsTests"
-   dotnet test --filter "FullyQualifiedName~GitToolsTests"
+# With coverage
+dotnet test --collect:"XPlat Code Coverage"
+```
 
-Recommended testing layers:
+### Test Structure
 
-- Unit tests for services and mapping logic
-- Contract tests for MCP tool outputs
-- Integration tests for HTTP endpoints (optional but encouraged)
+```
+tests/Viamus.Azure.Devops.Mcp.Server.Tests/
+├── Models/     # DTO serialization and equality tests
+└── Tools/      # Tool behavior tests with mocked services
+```
 
-Tests are located under:
-   tests/Viamus.Azure.Devops.Mcp.Server.Tests/
-       Models/           # DTO serialization and equality tests
-       Tools/            # Tool behavior tests with mocked services
+### Testing Layers
 
-------------------------------------------------------------
-9. ADDING A NEW MCP TOOL
-------------------------------------------------------------
+- **Unit tests**: Services and mapping logic
+- **Contract tests**: MCP tool outputs
+- **Integration tests**: HTTP endpoints (optional but encouraged)
 
-When adding a new tool, ensure:
+---
 
-1. Clear and descriptive name
-2. Single responsibility
-3. Stable inputs and outputs
-4. Parameter validation
-5. Safe and consistent error handling
+## Adding a New MCP Tool
 
-Suggested steps:
+### Checklist
 
-1. Add tool implementation under:
-   src/Viamus.Azure.Devops.Mcp.Server/Tools/
+Before creating a new tool, ensure it has:
 
-   - Use [McpServerToolType] attribute on the class
-   - Use [McpServerTool(Name = "tool_name")] on methods
-   - Use [Description] attributes for documentation
-   - Inject IAzureDevOpsService via constructor
+- [ ] Clear and descriptive name (snake_case)
+- [ ] Single responsibility
+- [ ] Stable inputs and outputs
+- [ ] Parameter validation
+- [ ] Safe and consistent error handling
+- [ ] Unit tests
+- [ ] Documentation in README.md
 
-2. Add or extend Azure DevOps logic under:
-   src/Viamus.Azure.Devops.Mcp.Server/Services/
+### Steps
 
-   - Add method signature to IAzureDevOpsService interface
-   - Implement in AzureDevOpsService class
-   - Use appropriate Azure DevOps SDK clients
+1. **Add tool implementation** in `src/.../Tools/`
 
-3. Add models/DTOs if needed under:
-   src/Viamus.Azure.Devops.Mcp.Server/Models/
+```csharp
+[McpServerToolType]
+public sealed class MyTools
+{
+    private readonly IAzureDevOpsService _service;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
-   - Use sealed record for immutability
+    public MyTools(IAzureDevOpsService service) => _service = service;
+
+    [McpServerTool(Name = "my_tool")]
+    [Description("Description of what this tool does")]
+    public async Task<string> MyTool(
+        [Description("Parameter description")] string param,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _service.MyMethodAsync(param, cancellationToken);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+}
+```
+
+2. **Add service method** in `src/.../Services/`
+   - Add signature to `IAzureDevOpsService.cs`
+   - Implement in `AzureDevOpsService.cs`
+
+3. **Add DTOs if needed** in `src/.../Models/`
+   - Use `sealed record` for immutability
    - Include XML documentation
-   - Keep fields nullable where appropriate
 
-4. Tools are auto-registered via .WithToolsFromAssembly()
+4. **Add tests** in `tests/.../Tools/`
 
-5. Update documentation (README.md) and add tests
+5. **Update README.md** with the new tool
 
-EXAMPLE TOOL STRUCTURE
-----------------------
+> Tools are auto-registered via `.WithToolsFromAssembly()`
 
-   [McpServerToolType]
-   public sealed class MyTools
-   {
-       private readonly IAzureDevOpsService _service;
-       private static readonly JsonSerializerOptions JsonOptions = new()
-       {
-           WriteIndented = true,
-           PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-       };
+---
 
-       public MyTools(IAzureDevOpsService service) => _service = service;
+## Architecture Overview
 
-       [McpServerTool(Name = "my_tool")]
-       [Description("Description of what this tool does")]
-       public async Task<string> MyTool(
-           [Description("Parameter description")] string param,
-           CancellationToken cancellationToken = default)
-       {
-           var result = await _service.MyMethodAsync(param, cancellationToken);
-           return JsonSerializer.Serialize(result, JsonOptions);
-       }
-   }
+### Project Structure
 
-------------------------------------------------------------
-10. ARCHITECTURE OVERVIEW
-------------------------------------------------------------
-
-PROJECT STRUCTURE
------------------
-
+```
 src/Viamus.Azure.Devops.Mcp.Server/
 ├── Configuration/
-│   └── AzureDevOpsOptions.cs      # Configuration binding
+│   └── AzureDevOpsOptions.cs        # Configuration binding
 ├── Models/
-│   ├── WorkItemDto.cs             # Work item full details
-│   ├── WorkItemSummaryDto.cs      # Work item lightweight view
-│   ├── WorkItemCommentDto.cs      # Work item comment
-│   ├── PaginatedResult.cs         # Generic pagination wrapper
-│   ├── RepositoryDto.cs           # Git repository details
-│   ├── BranchDto.cs               # Git branch details
-│   ├── GitItemDto.cs              # Git file/folder item
-│   └── GitFileContentDto.cs       # Git file content
+│   ├── WorkItemDto.cs               # Work item details
+│   ├── WorkItemSummaryDto.cs        # Work item list view
+│   ├── WorkItemCommentDto.cs        # Work item comment
+│   ├── RepositoryDto.cs             # Git repository
+│   ├── BranchDto.cs                 # Git branch
+│   ├── GitItemDto.cs                # Git file/folder
+│   ├── GitFileContentDto.cs         # File content
+│   ├── PullRequestDto.cs            # Pull request details
+│   ├── PullRequestReviewerDto.cs    # PR reviewer
+│   ├── PullRequestThreadDto.cs      # PR comment thread
+│   ├── PullRequestCommentDto.cs     # PR comment
+│   ├── PipelineDto.cs               # Pipeline definition
+│   ├── BuildDto.cs                  # Build details
+│   ├── BuildLogDto.cs               # Build log metadata
+│   ├── BuildTimelineRecordDto.cs    # Build timeline
+│   ├── PipelineRunDto.cs            # Pipeline run
+│   └── PaginatedResult.cs           # Generic pagination
 ├── Services/
-│   ├── IAzureDevOpsService.cs     # Service interface
-│   └── AzureDevOpsService.cs      # Implementation
+│   ├── IAzureDevOpsService.cs       # Service interface
+│   └── AzureDevOpsService.cs        # Implementation
 ├── Tools/
-│   ├── WorkItemTools.cs           # Work Item MCP tools
-│   └── GitTools.cs                # Git Repository MCP tools
-└── Program.cs                     # Entry point and DI setup
+│   ├── WorkItemTools.cs             # Work Item tools (9)
+│   ├── GitTools.cs                  # Git Repository tools (6)
+│   ├── PullRequestTools.cs          # Pull Request tools (5)
+│   └── PipelineTools.cs             # Pipeline/Build tools (9)
+└── Program.cs                       # Entry point & DI
+```
 
-KEY PATTERNS
-------------
+### Key Patterns
 
-- Dependency Injection: Services registered as singletons
-- Interface-based design: Enables testing with mocks
-- DTOs as sealed records: Immutability and value equality
-- Consistent JSON serialization: CamelCase, indented output
-- Error handling: JSON error responses, no exceptions to client
+| Pattern | Description |
+|---------|-------------|
+| Dependency Injection | Services registered as singletons |
+| Interface-based design | Enables testing with mocks |
+| DTOs as sealed records | Immutability and value equality |
+| JSON serialization | CamelCase, indented output |
+| Error handling | JSON error responses, no exceptions to client |
 
-AZURE DEVOPS SDK CLIENTS
-------------------------
+### Azure DevOps SDK Clients
 
-- WorkItemTrackingHttpClient: Work Items, WIQL queries, comments
-- GitHttpClient: Repositories, branches, items, file content
+| Client | Used For |
+|--------|----------|
+| `WorkItemTrackingHttpClient` | Work Items, WIQL queries, comments |
+| `GitHttpClient` | Repositories, branches, items, file content, PRs |
+| `BuildHttpClient` | Pipelines, builds, logs, timelines |
 
-------------------------------------------------------------
-11. SECURITY
-------------------------------------------------------------
+---
 
-- Never commit secrets (PATs, tokens, credentials)
-- Avoid logging sensitive data
-- Validate all external inputs
-- Sanitize user inputs in WIQL queries (escape single quotes)
+## Security
+
+- **Never commit secrets** (PATs, tokens, credentials)
+- **Avoid logging sensitive data**
+- **Validate all external inputs**
+- **Sanitize user inputs** in WIQL queries (escape single quotes)
 
 If you discover a security vulnerability:
-- Do NOT open a public issue
-- Contact the maintainers privately (see SECURITY.md)
+- **Do NOT open a public issue**
+- Contact the maintainers privately (see [SECURITY.md](SECURITY.md))
 
-------------------------------------------------------------
-12. RELEASE NOTES
-------------------------------------------------------------
+---
 
-If your contribution changes behavior or adds a new tool, include a short
-release note suggestion in your PR description, for example:
-
-- Added: Git repository browsing tools (get_repositories, get_branches, etc.)
-- Added: support for filtering work items by area path
-- Fixed: WIQL query errors now return consistent tool responses
-- Changed: tool output now includes changedDate metadata
-
-------------------------------------------------------------
-13. GETTING HELP
-------------------------------------------------------------
+## Getting Help
 
 If you need help:
 
-- Check the README and documentation first
-- Open a GitHub issue including:
-  - Expected behavior
-  - Actual behavior
-  - Reproduction steps
-  - Logs (with secrets removed)
-  - Environment details (OS, .NET version, Docker version)
+1. Check the [README](README.md) first
+2. Search existing [issues](https://github.com/viamus/mcp-azure-devops/issues)
+3. Open a new issue with:
+   - Expected behavior
+   - Actual behavior
+   - Reproduction steps
+   - Logs (with secrets removed)
+   - Environment details (OS, .NET version, Docker version)
 
-------------------------------------------------------------
+---
 
-Thank you for contributing to MCP Azure DevOps Server!
+**Thank you for contributing to MCP Azure DevOps Server!**
+
 Your help makes this project better for everyone.

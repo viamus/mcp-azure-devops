@@ -23,4 +23,34 @@ public sealed record WorkItemDto
     public int? ParentId { get; init; }
     public string? Url { get; init; }
     public Dictionary<string, object?>? CustomFields { get; init; }
+
+    /// <summary>
+    /// List of commit IDs linked to this work item.
+    /// </summary>
+    public List<WorkItemCommitLinkDto>? LinkedCommits { get; init; }
+
+    /// <summary>
+    /// List of pull request IDs linked to this work item.
+    /// </summary>
+    public List<WorkItemPullRequestLinkDto>? LinkedPullRequests { get; init; }
+}
+
+/// <summary>
+/// Represents a commit link associated with a work item.
+/// </summary>
+public sealed record WorkItemCommitLinkDto
+{
+    public string? CommitId { get; init; }
+    public string? RepositoryId { get; init; }
+    public string? Url { get; init; }
+}
+
+/// <summary>
+/// Represents a pull request link associated with a work item.
+/// </summary>
+public sealed record WorkItemPullRequestLinkDto
+{
+    public int PullRequestId { get; init; }
+    public string? RepositoryId { get; init; }
+    public string? Url { get; init; }
 }

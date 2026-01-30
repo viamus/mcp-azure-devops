@@ -55,7 +55,7 @@ public sealed class PullRequestTools
     }
 
     [McpServerTool(Name = "get_pull_request")]
-    [Description("Gets details of a specific pull request by ID. Returns full PR information including description, reviewers with their votes, and merge status.")]
+    [Description("Gets details of a specific pull request by ID within a repository. Returns full PR information including description, reviewers with their votes, and merge status.")]
     public async Task<string> GetPullRequest(
         [Description("The repository name or ID")] string repositoryNameOrId,
         [Description("The pull request ID")] int pullRequestId,
@@ -78,6 +78,29 @@ public sealed class PullRequestTools
         if (pullRequest is null)
         {
             return JsonSerializer.Serialize(new { error = $"Pull request {pullRequestId} not found in repository '{repositoryNameOrId}'" }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(pullRequest, JsonOptions);
+    }
+
+    [McpServerTool(Name = "get_pull_request_by_id")]
+    [Description("Gets details of a pull request by ID only, without needing to specify the repository. This is a project-level lookup that finds the PR across all repositories. Returns full PR information including description, reviewers with their votes, merge status, and repository details.")]
+    public async Task<string> GetPullRequestById(
+        [Description("The pull request ID")] int pullRequestId,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (pullRequestId <= 0)
+        {
+            return JsonSerializer.Serialize(new { error = "Pull request ID must be a positive integer" }, JsonOptions);
+        }
+
+        var pullRequest = await _azureDevOpsService.GetPullRequestByIdOnlyAsync(
+            pullRequestId, project, cancellationToken);
+
+        if (pullRequest is null)
+        {
+            return JsonSerializer.Serialize(new { error = $"Pull request {pullRequestId} not found in project" }, JsonOptions);
         }
 
         return JsonSerializer.Serialize(pullRequest, JsonOptions);

@@ -1,10 +1,68 @@
 # MCP Azure DevOps Server
 
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
+
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Azure DevOps integration, enabling AI assistants to interact with Azure DevOps Work Items, Git Repositories, Pull Requests, and Pipelines.
+
+---
+
+## Quick Start
+
+Get up and running in 3 steps:
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/viamus/mcp-azure-devops.git
+cd mcp-azure-devops
+cp .env.example .env
+```
+
+Edit `.env` with your Azure DevOps credentials:
+
+```env
+AZURE_DEVOPS_ORG_URL=https://dev.azure.com/your-organization
+AZURE_DEVOPS_PAT=your-personal-access-token
+AZURE_DEVOPS_DEFAULT_PROJECT=your-project-name  # optional
+```
+
+> **Need a PAT?** See [Creating a Personal Access Token](#creating-a-personal-access-token-pat) below.
+
+### 2. Run the server
+
+**Option A - Docker (recommended):**
+```bash
+docker compose up -d
+# Server runs at http://localhost:8080
+```
+
+**Option B - .NET CLI:**
+```bash
+dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
+# Server runs at http://localhost:5000
+```
+
+### 3. Verify it's working
+
+```bash
+# Docker
+curl http://localhost:8080/health
+
+# .NET CLI
+curl http://localhost:5000/health
+```
+
+You should see: `Healthy`
+
+---
 
 ## About
 
 This project implements an MCP server that exposes tools for querying and managing Work Items and Git Repositories in Azure DevOps. It can be used with any compatible MCP client, such as Claude Desktop, Claude Code, or other assistants that support the protocol.
+
+---
 
 ## Available Tools
 
@@ -57,66 +115,68 @@ This project implements an MCP server that exposes tools for querying and managi
 | `get_build_timeline` | Gets the timeline (stages, jobs, tasks) for a build |
 | `query_builds` | Advanced query with multiple combined filters |
 
+---
+
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (for local execution)
-- [Docker](https://www.docker.com/) (for container execution)
-- An Azure DevOps account with a Personal Access Token (PAT)
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0+ | Required for local development |
+| [Docker](https://www.docker.com/) | Latest | Recommended for running |
+| Azure DevOps Account | - | With Personal Access Token |
 
 ### Creating a Personal Access Token (PAT)
 
-1. Go to your Azure DevOps organization
-2. Navigate to **User Settings** > **Personal Access Tokens**
-3. Click **New Token**
-4. Configure the required permissions:
-   - **Work Items**: Read & Write
-   - **Code**: Read (for Git repository and Pull Request access)
-   - **Build**: Read (for Pipeline and Build access)
-5. Copy the generated token
+1. Go to your Azure DevOps organization: `https://dev.azure.com/{your-org}`
+2. Click on **User Settings** (gear icon) > **Personal Access Tokens**
+3. Click **+ New Token**
+4. Configure:
+   - **Name**: `MCP Server` (or any name you prefer)
+   - **Expiration**: Choose based on your needs
+   - **Scopes**: Select the following permissions:
 
-## Configuration
+| Scope | Permission | Required for |
+|-------|------------|--------------|
+| Work Items | Read & Write | Work item operations |
+| Code | Read | Git repositories and Pull Requests |
+| Build | Read | Pipelines and Builds |
 
-### Environment Variables
+5. Click **Create** and **copy the token immediately** (you won't see it again!)
 
-Copy the `.env.example` file to `.env` and configure it:
+---
 
-```bash
-cp .env.example .env
-```
+## Running Options
 
-Edit the `.env` file:
+### Option 1: Docker Compose (Recommended)
 
-```env
-# Required: Your Azure DevOps organization URL
-AZURE_DEVOPS_ORG_URL=https://dev.azure.com/your-organization
-
-# Required: Personal Access Token
-AZURE_DEVOPS_PAT=your-token-here
-
-# Optional: Default project name
-AZURE_DEVOPS_DEFAULT_PROJECT=your-project
-```
-
-## Running the Project
-
-### Using Docker Compose (Recommended)
+Best for: Production use, quick setup without .NET installed
 
 ```bash
 docker compose up -d
 ```
 
-The server will be available at `http://localhost:8080`.
+Server URL: `http://localhost:8080`
 
-### Using .NET CLI
-
+**Useful commands:**
 ```bash
-cd src/Viamus.Azure.Devops.Mcp.Server
-dotnet run
+docker compose logs -f          # View logs
+docker compose down             # Stop the server
+docker compose up -d --build    # Rebuild and start
 ```
 
-### Using Self-Contained Executable
+### Option 2: .NET CLI
 
-You can publish the server as a self-contained executable that doesn't require .NET to be installed:
+Best for: Development, debugging
+
+```bash
+dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
+```
+
+Server URL: `http://localhost:5000`
+
+### Option 3: Self-Contained Executable
+
+Best for: Deployment without .NET runtime
 
 ```bash
 # Windows
@@ -125,48 +185,69 @@ dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r win-x64 -o ./pub
 # Linux
 dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r linux-x64 -o ./publish/linux-x64
 
+# macOS (Intel)
+dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r osx-x64 -o ./publish/osx-x64
+
 # macOS (Apple Silicon)
 dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r osx-arm64 -o ./publish/osx-arm64
 ```
 
-### Verifying it's Working
-
-Access the health check endpoint:
-
+Then run the executable directly:
 ```bash
-curl http://localhost:5000/health
+# Windows
+./publish/win-x64/Viamus.Azure.Devops.Mcp.Server.exe
+
+# Linux/macOS
+./publish/linux-x64/Viamus.Azure.Devops.Mcp.Server
 ```
 
-## Configuring in Claude Desktop
+---
 
-Add the following configuration to your Claude Desktop config file (`claude_desktop_config.json`):
+## Client Configuration
 
-claude mcp add mcp-azure-devops --transport http <endpoint>
+### Claude Desktop
+
+**Option A - Using CLI (recommended):**
+```bash
+claude mcp add azure-devops --transport http http://localhost:8080
+```
+
+**Option B - Manual configuration:**
+
+Edit `claude_desktop_config.json`:
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "azure-devops": {
-      "url": "http://localhost:5000"
+      "url": "http://localhost:8080"
     }
   }
 }
 ```
 
-## Configuring in Claude Code
+### Claude Code
 
-Add to your MCP configuration file:
+Run from your project directory:
+```bash
+claude mcp add azure-devops --transport http http://localhost:8080
+```
 
+Or add manually to `.claude/settings.json`:
 ```json
 {
   "mcpServers": {
     "azure-devops": {
       "type": "http",
-      "url": "http://localhost:5000"
+      "url": "http://localhost:8080"
     }
   }
 }
 ```
+
+> **Note**: Use port `5000` if running with .NET CLI, or `8080` if running with Docker.
 
 ## Usage Examples
 
@@ -209,47 +290,92 @@ After configuring the MCP client, you can ask questions like:
 - "Show me the timeline of build #123"
 - "What builds are currently in progress?"
 
+---
+
+## Troubleshooting
+
+### Common Issues
+
+<details>
+<summary><strong>Health check returns error or connection refused</strong></summary>
+
+1. Verify the server is running:
+   ```bash
+   # Docker
+   docker compose ps
+
+   # Check if port is in use
+   netstat -an | grep 8080  # or 5000
+   ```
+
+2. Check logs for errors:
+   ```bash
+   # Docker
+   docker compose logs
+
+   # .NET CLI - errors appear in terminal
+   ```
+</details>
+
+<details>
+<summary><strong>Authentication failed / 401 Unauthorized</strong></summary>
+
+1. Verify your PAT is correct in `.env`
+2. Check PAT hasn't expired in Azure DevOps
+3. Ensure PAT has required scopes (Work Items, Code, Build)
+4. Verify the organization URL is correct (no trailing slash)
+</details>
+
+<details>
+<summary><strong>Project not found</strong></summary>
+
+1. Verify `AZURE_DEVOPS_DEFAULT_PROJECT` matches exact project name
+2. Or pass the project name explicitly in your queries
+3. Check PAT has access to the project
+</details>
+
+<details>
+<summary><strong>Docker: Container exits immediately</strong></summary>
+
+1. Check if `.env` file exists and has required variables
+2. View logs: `docker compose logs`
+3. Ensure ports 8080 is not in use by another application
+</details>
+
+<details>
+<summary><strong>.NET CLI: dotnet run fails</strong></summary>
+
+1. Verify .NET 10 SDK is installed: `dotnet --version`
+2. Restore packages: `dotnet restore`
+3. Check if `.env` file is in project root
+</details>
+
+---
+
 ## Project Structure
 
 ```
+mcp-azure-devops/
 ├── src/
 │   └── Viamus.Azure.Devops.Mcp.Server/
-│       ├── Configuration/     # Configuration classes
-│       ├── Models/            # DTOs and models
-│       │   ├── WorkItemDto.cs
-│       │   ├── WorkItemSummaryDto.cs
-│       │   ├── WorkItemCommentDto.cs
-│       │   ├── PaginatedResult.cs
-│       │   ├── RepositoryDto.cs
-│       │   ├── BranchDto.cs
-│       │   ├── GitItemDto.cs
-│       │   ├── GitFileContentDto.cs
-│       │   ├── PullRequestDto.cs
-│       │   ├── PullRequestReviewerDto.cs
-│       │   ├── PullRequestThreadDto.cs
-│       │   ├── PullRequestCommentDto.cs
-│       │   ├── PipelineDto.cs
-│       │   ├── BuildDto.cs
-│       │   ├── BuildLogDto.cs
-│       │   └── BuildTimelineRecordDto.cs
-│       ├── Services/          # Azure DevOps integration services
-│       │   ├── IAzureDevOpsService.cs
-│       │   └── AzureDevOpsService.cs
-│       ├── Tools/             # Exposed MCP tools
-│       │   ├── WorkItemTools.cs
-│       │   ├── GitTools.cs
-│       │   ├── PullRequestTools.cs
-│       │   └── PipelineTools.cs
-│       └── Program.cs         # Application entry point
+│       ├── Configuration/      # App configuration classes
+│       ├── Models/             # DTOs and data models
+│       ├── Services/           # Azure DevOps SDK integration
+│       ├── Tools/              # MCP tool implementations
+│       ├── Program.cs          # Entry point
+│       ├── appsettings.json    # App settings
+│       └── Dockerfile          # Container definition
 ├── tests/
 │   └── Viamus.Azure.Devops.Mcp.Server.Tests/
-│       ├── Models/            # Model unit tests
-│       └── Tools/             # Tool unit tests
-├── .github/
-│   └── ISSUE_TEMPLATE/        # GitHub issue templates
-├── docker-compose.yml         # Docker Compose configuration
-├── .env.example               # Environment variables example
-└── README.md
+│       ├── Models/             # DTO tests
+│       └── Tools/              # Tool behavior tests
+├── .github/                    # GitHub templates
+├── .env.example                # Environment template
+├── docker-compose.yml          # Docker orchestration
+├── CONTRIBUTING.md             # Contributor guide
+├── CODE_OF_CONDUCT.md          # Community guidelines
+├── SECURITY.md                 # Security policy
+└── LICENSE                     # MIT License
 ```
 
 ## API Reference
@@ -318,6 +444,51 @@ Build log metadata with Id, Type, Url, LineCount, and timestamps.
 #### BuildTimelineRecordDto
 Timeline record (stage, job, or task) with Id, ParentId, Type, Name, State, Result, timing information, and error/warning counts.
 
+---
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+dotnet test
+
+# Run specific test class
+dotnet test --filter "FullyQualifiedName~WorkItemToolsTests"
+
+# Run with coverage
+dotnet test --collect:"XPlat Code Coverage"
+```
+
+### Building
+
+```bash
+# Debug build
+dotnet build
+
+# Release build
+dotnet build -c Release
+```
+
+### Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Coding standards
+- How to add new MCP tools
+- Pull request guidelines
+
+---
+
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Links
+
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [Azure DevOps REST API](https://learn.microsoft.com/en-us/rest/api/azure/devops/)
+- [Report an Issue](https://github.com/viamus/mcp-azure-devops/issues)

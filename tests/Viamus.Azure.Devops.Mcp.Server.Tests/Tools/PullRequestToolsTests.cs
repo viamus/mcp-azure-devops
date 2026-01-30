@@ -176,6 +176,81 @@ public class PullRequestToolsTests
 
     #endregion
 
+    #region GetPullRequestById Tests
+
+    [Fact]
+    public async Task GetPullRequestById_WhenExists_ShouldReturnPullRequest()
+    {
+        var pullRequest = new PullRequestDto
+        {
+            PullRequestId = 456,
+            Title = "Feature via ID lookup",
+            Description = "Found by ID only",
+            SourceBranch = "refs/heads/feature-x",
+            TargetBranch = "refs/heads/main",
+            Status = "Active",
+            RepositoryName = "my-repo",
+            RepositoryId = "repo-guid-123"
+        };
+
+        _mockService
+            .Setup(s => s.GetPullRequestByIdOnlyAsync(456, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        var result = await _tools.GetPullRequestById(456);
+
+        Assert.Contains("\"pullRequestId\": 456", result);
+        Assert.Contains("Feature via ID lookup", result);
+        Assert.Contains("my-repo", result);
+    }
+
+    [Fact]
+    public async Task GetPullRequestById_WhenNotFound_ShouldReturnError()
+    {
+        _mockService
+            .Setup(s => s.GetPullRequestByIdOnlyAsync(999, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PullRequestDto?)null);
+
+        var result = await _tools.GetPullRequestById(999);
+
+        Assert.Contains("error", result);
+        Assert.Contains("not found", result);
+    }
+
+    [Fact]
+    public async Task GetPullRequestById_WithInvalidId_ShouldReturnError()
+    {
+        var result = await _tools.GetPullRequestById(0);
+
+        Assert.Contains("error", result);
+        Assert.Contains("Pull request ID must be a positive integer", result);
+    }
+
+    [Fact]
+    public async Task GetPullRequestById_WithNegativeId_ShouldReturnError()
+    {
+        var result = await _tools.GetPullRequestById(-5);
+
+        Assert.Contains("error", result);
+        Assert.Contains("Pull request ID must be a positive integer", result);
+    }
+
+    [Fact]
+    public async Task GetPullRequestById_WithProject_ShouldPassProjectToService()
+    {
+        var pullRequest = new PullRequestDto { PullRequestId = 789 };
+
+        _mockService
+            .Setup(s => s.GetPullRequestByIdOnlyAsync(789, "MyProject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        await _tools.GetPullRequestById(789, "MyProject");
+
+        _mockService.Verify(s => s.GetPullRequestByIdOnlyAsync(789, "MyProject", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
+
     #region GetPullRequestThreads Tests
 
     [Fact]

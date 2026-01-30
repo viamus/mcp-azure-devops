@@ -168,7 +168,7 @@ public interface IAzureDevOpsService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a specific pull request by ID.
+    /// Gets a specific pull request by ID within a repository.
     /// </summary>
     /// <param name="repositoryNameOrId">The repository name or ID.</param>
     /// <param name="pullRequestId">The pull request ID.</param>
@@ -177,6 +177,18 @@ public interface IAzureDevOpsService
     /// <returns>The pull request details.</returns>
     Task<PullRequestDto?> GetPullRequestByIdAsync(
         string repositoryNameOrId,
+        int pullRequestId,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific pull request by ID only (project-level lookup, no repository required).
+    /// </summary>
+    /// <param name="pullRequestId">The pull request ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The pull request details.</returns>
+    Task<PullRequestDto?> GetPullRequestByIdOnlyAsync(
         int pullRequestId,
         string? project = null,
         CancellationToken cancellationToken = default);
