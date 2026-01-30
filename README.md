@@ -17,15 +17,18 @@ Get up and running in 3 steps:
 ```bash
 git clone https://github.com/viamus/mcp-azure-devops.git
 cd mcp-azure-devops
-cp .env.example .env
 ```
 
-Edit `.env` with your Azure DevOps credentials:
+Edit `src/Viamus.Azure.Devops.Mcp.Server/appsettings.json` with your Azure DevOps credentials:
 
-```env
-AZURE_DEVOPS_ORG_URL=https://dev.azure.com/your-organization
-AZURE_DEVOPS_PAT=your-personal-access-token
-AZURE_DEVOPS_DEFAULT_PROJECT=your-project-name  # optional
+```json
+{
+  "AzureDevOps": {
+    "OrganizationUrl": "https://dev.azure.com/your-organization",
+    "PersonalAccessToken": "your-personal-access-token",
+    "DefaultProject": "your-project-name"
+  }
+}
 ```
 
 > **Need a PAT?** See [Creating a Personal Access Token](#creating-a-personal-access-token-pat) below.
@@ -320,7 +323,7 @@ After configuring the MCP client, you can ask questions like:
 <details>
 <summary><strong>Authentication failed / 401 Unauthorized</strong></summary>
 
-1. Verify your PAT is correct in `.env`
+1. Verify your PAT is correct in `appsettings.json`
 2. Check PAT hasn't expired in Azure DevOps
 3. Ensure PAT has required scopes (Work Items, Code, Build)
 4. Verify the organization URL is correct (no trailing slash)
@@ -337,7 +340,7 @@ After configuring the MCP client, you can ask questions like:
 <details>
 <summary><strong>Docker: Container exits immediately</strong></summary>
 
-1. Check if `.env` file exists and has required variables
+1. Check if `appsettings.json` has the required Azure DevOps configuration
 2. View logs: `docker compose logs`
 3. Ensure ports 8080 is not in use by another application
 </details>
@@ -347,7 +350,7 @@ After configuring the MCP client, you can ask questions like:
 
 1. Verify .NET 10 SDK is installed: `dotnet --version`
 2. Restore packages: `dotnet restore`
-3. Check if `.env` file is in project root
+3. Check if `appsettings.json` has the correct Azure DevOps settings
 </details>
 
 ---
@@ -370,7 +373,7 @@ mcp-azure-devops/
 │       ├── Models/             # DTO tests
 │       └── Tools/              # Tool behavior tests
 ├── .github/                    # GitHub templates
-├── .env.example                # Environment template
+├── .env.example                # Environment template (Docker)
 ├── docker-compose.yml          # Docker orchestration
 ├── CONTRIBUTING.md             # Contributor guide
 ├── CODE_OF_CONDUCT.md          # Community guidelines
