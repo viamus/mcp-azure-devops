@@ -76,7 +76,8 @@ irm https://raw.githubusercontent.com/viamus/mcp-azure-devops/main/install-mcp-a
 .\install-mcp-azure-devops.ps1 `
     -OrganizationUrl "https://dev.azure.com/your-organization" `
     -PersonalAccessToken "your-pat-token" `
-    -DefaultProject "your-project-name"
+    -DefaultProject "your-project-name" `
+    -ApiKey "your-secure-api-key"  # Optional: enables API key authentication
 ```
 
 The script will automatically:
