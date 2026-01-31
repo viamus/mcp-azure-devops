@@ -8,7 +8,7 @@
     <DockerfileContext>..\..</DockerfileContext>
 
     <!-- Package metadata -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>Viamus</Authors>
     <Company>Viamus</Company>
     <Product>Azure DevOps MCP Server</Product>
