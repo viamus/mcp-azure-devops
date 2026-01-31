@@ -1,5 +1,6 @@
 # MCP Azure DevOps Server
 
+[![CI](https://github.com/viamus/mcp-azure-devops/actions/workflows/ci.yml/badge.svg)](https://github.com/viamus/mcp-azure-devops/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
