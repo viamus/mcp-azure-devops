@@ -12,6 +12,8 @@ services:
       - AzureDevOps__OrganizationUrl=${AZURE_DEVOPS_ORG_URL}
       - AzureDevOps__PersonalAccessToken=${AZURE_DEVOPS_PAT}
       - AzureDevOps__DefaultProject=${AZURE_DEVOPS_DEFAULT_PROJECT:-}
+      - ServerSecurity__ApiKey=${MCP_API_KEY:-}
+      - ServerSecurity__RequireApiKey=${MCP_REQUIRE_API_KEY:-false}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

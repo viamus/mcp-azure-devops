@@ -9,9 +9,9 @@
     2. Installs Node.js if not present
     3. Installs Claude Code CLI if not present
     4. Clones the mcp-azure-devops repository
-    5. Configures appsettings.json with Azure DevOps credentials
+    5. Configures appsettings.json with Azure DevOps credentials and security settings
     6. Restores .NET dependencies
-    7. Configures Claude Code MCP via HTTP transport (http://localhost:5000)
+    7. Configures Claude Code MCP via HTTP transport (https://localhost:5001)
 
 .PARAMETER InstallPath
     The path where the repository will be cloned. Default: $env:USERPROFILE\mcp-azure-devops
@@ -25,8 +25,17 @@
 .PARAMETER DefaultProject
     Your default Azure DevOps project name (optional)
 
+.PARAMETER ApiKey
+    API key for MCP server authentication (optional). If provided, RequireApiKey is automatically enabled.
+
+.PARAMETER RequireApiKey
+    Whether to require API key authentication on the server (default: false if ApiKey not provided)
+
 .EXAMPLE
     .\install-mcp-azure-devops.ps1 -OrganizationUrl "https://dev.azure.com/myorg" -PersonalAccessToken "my-pat"
+
+.EXAMPLE
+    .\install-mcp-azure-devops.ps1 -OrganizationUrl "https://dev.azure.com/myorg" -PersonalAccessToken "my-pat" -ApiKey "my-secure-api-key"
 #>
 
 param(
@@ -38,7 +47,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$PersonalAccessToken,
 
-    [string]$DefaultProject = ""
+    [string]$DefaultProject = "",
+
+    [string]$ApiKey = "",
+
+    [bool]$RequireApiKey = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -183,9 +196,15 @@ if (Test-Path $InstallPath) {
 }
 
 # Step 5: Configure appsettings.json
-Write-Step "Configuring Azure DevOps credentials..."
+Write-Step "Configuring Azure DevOps credentials and security settings..."
 
 $appSettingsPath = Join-Path $InstallPath "src\Viamus.Azure.Devops.Mcp.Server\appsettings.json"
+
+# If ApiKey is provided, automatically enable RequireApiKey
+$effectiveRequireApiKey = $RequireApiKey
+if ($ApiKey -ne "") {
+    $effectiveRequireApiKey = $true
+}
 
 $appSettings = @{
     Logging = @{
@@ -200,6 +219,10 @@ $appSettings = @{
         PersonalAccessToken = $PersonalAccessToken
         DefaultProject = $DefaultProject
     }
+    ServerSecurity = @{
+        ApiKey = $ApiKey
+        RequireApiKey = $effectiveRequireApiKey
+    }
 }
 
 $appSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $appSettingsPath -Encoding UTF8
@@ -213,16 +236,23 @@ Pop-Location
 Write-Success "Dependencies restored"
 
 # Step 7: Configure Claude Code MCP
-Write-Step "Configuring Claude Code MCP (HTTP transport)..."
+Write-Step "Configuring Claude Code MCP (HTTPS transport)..."
 
 # Add azure-devops MCP server using claude CLI
-claude mcp add azure-devops --transport http http://localhost:5000
+if ($ApiKey -ne "") {
+    # Configure with API key header for authentication
+    claude mcp add azure-devops --transport http https://localhost:5001 --header "X-API-Key: $ApiKey"
+    $mcpCommand = "claude mcp add azure-devops --transport http https://localhost:5001 --header `"X-API-Key: <your-api-key>`""
+} else {
+    claude mcp add azure-devops --transport http https://localhost:5001
+    $mcpCommand = "claude mcp add azure-devops --transport http https://localhost:5001"
+}
 
 if ($LASTEXITCODE -eq 0) {
     Write-Success "Claude Code MCP configured successfully"
 } else {
     Write-Warning "Could not add MCP automatically. You can add it manually with:"
-    Write-Host "  claude mcp add azure-devops --transport http http://localhost:5000"
+    Write-Host "  $mcpCommand"
 }
 
 # Summary
@@ -232,16 +262,22 @@ Write-Host "  Installation Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Repository location: $InstallPath"
-Write-Host "MCP Server URL: http://localhost:5000"
+Write-Host "MCP Server URL: https://localhost:5001"
+if ($ApiKey -ne "") {
+    Write-Host "API Key Authentication: Enabled" -ForegroundColor Cyan
+}
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "1. Start the MCP server:"
+Write-Host "1. Trust the development certificate (first time only):"
+Write-Host "   dotnet dev-certs https --trust"
+Write-Host ""
+Write-Host "2. Start the MCP server:"
 Write-Host "   cd $InstallPath"
 Write-Host "   dotnet run --project src/Viamus.Azure.Devops.Mcp.Server"
 Write-Host ""
-Write-Host "2. The server will be available at http://localhost:5000"
+Write-Host "3. The server will be available at https://localhost:5001"
 Write-Host ""
-Write-Host "3. Use Claude Code with the Azure DevOps MCP tools"
+Write-Host "4. Use Claude Code with the Azure DevOps MCP tools"
 Write-Host ""
 Write-Host "To verify the MCP configuration:" -ForegroundColor Yellow
 Write-Host "  claude mcp list"
