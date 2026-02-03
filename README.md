@@ -1,5 +1,6 @@
 # MCP Azure DevOps Server
 
+[![CI](https://github.com/viamus/mcp-azure-devops/actions/workflows/ci.yml/badge.svg)](https://github.com/viamus/mcp-azure-devops/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
@@ -38,13 +39,16 @@ Edit `src/Viamus.Azure.Devops.Mcp.Server/appsettings.json` with your Azure DevOp
 **Option A - Docker (recommended):**
 ```bash
 docker compose up -d
-# Server runs at http://localhost:8080
+# Server runs at http://localhost:8080 (use reverse proxy for HTTPS in production)
 ```
 
 **Option B - .NET CLI:**
 ```bash
+# Trust the development certificate (first time only)
+dotnet dev-certs https --trust
+
 dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
-# Server runs at http://localhost:5000
+# Server runs at https://localhost:5001
 ```
 
 ### 3. Verify it's working
@@ -54,7 +58,7 @@ dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 curl http://localhost:8080/health
 
 # .NET CLI
-curl http://localhost:5000/health
+curl https://localhost:5001/health
 ```
 
 You should see: `Healthy`
@@ -72,7 +76,8 @@ irm https://raw.githubusercontent.com/viamus/mcp-azure-devops/main/install-mcp-a
 .\install-mcp-azure-devops.ps1 `
     -OrganizationUrl "https://dev.azure.com/your-organization" `
     -PersonalAccessToken "your-pat-token" `
-    -DefaultProject "your-project-name"
+    -DefaultProject "your-project-name" `
+    -ApiKey "your-secure-api-key"  # Optional: enables API key authentication
 ```
 
 The script will automatically:
@@ -81,7 +86,7 @@ The script will automatically:
 - Install Claude Code CLI (if not present)
 - Clone the repository
 - Configure your Azure DevOps credentials
-- Register the MCP server with Claude Code (HTTP transport)
+- Register the MCP server with Claude Code (HTTPS transport)
 
 After installation, start the server:
 ```powershell
@@ -222,7 +227,9 @@ Best for: Production use, quick setup without .NET installed
 docker compose up -d
 ```
 
-Server URL: `http://localhost:8080`
+Server URL: `http://localhost:8080` (internal)
+
+> **Important**: For production, use a reverse proxy (nginx, traefik, or a cloud load balancer) in front of the container to provide HTTPS/TLS termination.
 
 **Useful commands:**
 ```bash
@@ -236,10 +243,13 @@ docker compose up -d --build    # Rebuild and start
 Best for: Development, debugging
 
 ```bash
+# Trust the development certificate (first time only)
+dotnet dev-certs https --trust
+
 dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 ```
 
-Server URL: `http://localhost:5000`
+Server URL: `https://localhost:5001`
 
 ### Option 3: Self-Contained Executable
 
@@ -268,53 +278,88 @@ Then run the executable directly:
 ./publish/linux-x64/Viamus.Azure.Devops.Mcp.Server
 ```
 
+> **Note**: For production, use a reverse proxy (nginx, traefik) or Application Gateway to handle TLS termination with your own certificates.
+
+---
+
+## Security
+
+### API Key Authentication
+
+The server supports optional API key authentication to protect your MCP endpoints.
+
+#### Configuration
+
+Add to `appsettings.json`:
+```json
+{
+  "ServerSecurity": {
+    "ApiKey": "your-secret-api-key",
+    "RequireApiKey": true
+  }
+}
+```
+
+Or via environment variables:
+```bash
+# .NET CLI
+ServerSecurity__ApiKey=your-secret-key ServerSecurity__RequireApiKey=true dotnet run
+
+# Docker
+docker compose up -d  # Configure in .env file
+```
+
+For Docker, add to your `.env` file:
+```bash
+MCP_API_KEY=your-secret-api-key
+MCP_REQUIRE_API_KEY=true
+```
+
+#### How It Works
+
+- When `RequireApiKey` is `false` (default): No authentication required
+- When `RequireApiKey` is `true`: All requests (except `/health`) require a valid API key
+- The `/health` endpoint is always accessible without authentication
+
+#### Providing the API Key
+
+Clients can provide the API key one way:
+
+**Option 1 - X-API-Key Header (recommended):**
+```bash
+curl -H "X-API-Key: your-secret-key" https://localhost:5001
+```
+
+
+#### Generating a Secure API Key
+
+```bash
+# Using OpenSSL
+openssl rand -base64 32
+
+# Using PowerShell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
 ---
 
 ## Client Configuration
 
-### Claude Desktop
-
-**Option A - Using CLI (recommended):**
-```bash
-claude mcp add azure-devops --transport http http://localhost:8080
-```
-
-**Option B - Manual configuration:**
-
-Edit `claude_desktop_config.json`:
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "azure-devops": {
-      "url": "http://localhost:8080"
-    }
-  }
-}
-```
-
 ### Claude Code
 
-Run from your project directory:
+**Without API Key authentication:**
 ```bash
-claude mcp add azure-devops --transport http http://localhost:8080
+claude mcp add azure-devops --transport http https://localhost:5001
 ```
 
-Or add manually to `.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "azure-devops": {
-      "type": "http",
-      "url": "http://localhost:8080"
-    }
-  }
-}
+
+**With API Key authentication:**
+
+```bash
+claude mcp add azure-devops --transport http https://localhost:5001 --header "X-API-Key: your-secret-api-key"
 ```
 
-> **Note**: Use port `5000` if running with .NET CLI, or `8080` if running with Docker.
+> **Note**: Use port `5001` (HTTPS) if running with .NET CLI, or `8080` (HTTP) if running with Docker locally. For production Docker deployments, configure a reverse proxy with HTTPS.
 
 ## Usage Examples
 
@@ -385,7 +430,8 @@ After configuring the MCP client, you can ask questions like:
    docker compose ps
 
    # Check if port is in use
-   netstat -an | grep 8080  # or 5000
+   netstat -an | grep 8080  # Docker
+   netstat -an | grep 5001  # .NET CLI
    ```
 
 2. Check logs for errors:
@@ -398,12 +444,31 @@ After configuring the MCP client, you can ask questions like:
 </details>
 
 <details>
-<summary><strong>Authentication failed / 401 Unauthorized</strong></summary>
+<summary><strong>Authentication failed / 401 Unauthorized (Azure DevOps)</strong></summary>
 
 1. Verify your PAT is correct in `appsettings.json`
 2. Check PAT hasn't expired in Azure DevOps
 3. Ensure PAT has required scopes (Work Items, Code, Build)
 4. Verify the organization URL is correct (no trailing slash)
+</details>
+
+<details>
+<summary><strong>401 Unauthorized (MCP Server API Key)</strong></summary>
+
+If API key authentication is enabled (`RequireApiKey: true`):
+
+1. Verify the API key is correctly set in your client configuration
+2. Check the `X-API-Key` header is being sent with requests
+3. Ensure the API key matches exactly (case-sensitive)
+4. The `/health` endpoint should still work without authentication
+
+```bash
+# Test health endpoint (should work without API key)
+curl https://localhost:5001/health
+
+# Test with API key
+curl -H "X-API-Key: your-key" https://localhost:5001
+```
 </details>
 
 <details>
@@ -419,7 +484,7 @@ After configuring the MCP client, you can ask questions like:
 
 1. Check if `appsettings.json` has the required Azure DevOps configuration
 2. View logs: `docker compose logs`
-3. Ensure ports 8080 is not in use by another application
+3. Ensure port 8080 is not in use by another application
 </details>
 
 <details>
@@ -439,6 +504,7 @@ mcp-azure-devops/
 ├── src/
 │   └── Viamus.Azure.Devops.Mcp.Server/
 │       ├── Configuration/      # App configuration classes
+│       ├── Middleware/         # HTTP middleware (authentication, etc.)
 │       ├── Models/             # DTOs and data models
 │       │   ├── WorkItemDto.cs          # Work item models
 │       │   ├── RepositoryDto.cs        # Git repository models
@@ -458,6 +524,8 @@ mcp-azure-devops/
 │       └── Dockerfile          # Container definition
 ├── tests/
 │   └── Viamus.Azure.Devops.Mcp.Server.Tests/
+│       ├── Configuration/      # Configuration tests
+│       ├── Middleware/         # Middleware tests
 │       ├── Models/             # DTO tests
 │       └── Tools/              # Tool behavior tests
 ├── .github/                    # GitHub templates
