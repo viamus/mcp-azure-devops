@@ -136,7 +136,19 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             }
 
             var workItemIds = queryResult.WorkItems.Select(wi => wi.Id).ToList();
-            return await GetWorkItemsAsync(workItemIds, project, cancellationToken);
+
+            // Process in batches to avoid API limits
+            const int batchSize = 100;
+            var results = new List<WorkItemDto>();
+
+            for (var i = 0; i < workItemIds.Count; i += batchSize)
+            {
+                var batchIds = workItemIds.Skip(i).Take(batchSize).ToList();
+                var batchResults = await GetWorkItemsAsync(batchIds, project, cancellationToken);
+                results.AddRange(batchResults);
+            }
+
+            return results;
         }
         catch (Exception ex)
         {
