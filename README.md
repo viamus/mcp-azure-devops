@@ -153,6 +153,40 @@ This project implements an MCP server that exposes tools for querying and managi
 | `get_build_timeline` | Gets the timeline (stages, jobs, tasks) for a build |
 | `query_builds` | Advanced query with multiple combined filters |
 
+### Analytics Tools
+
+Tools for analyzing delivery performance, identifying bottlenecks, and tracking work health.
+
+| Tool | Description |
+|------|-------------|
+| `get_flow_metrics` | Calculates Lead Time, Cycle Time, and Throughput with statistical analysis |
+| `compare_flow_metrics` | Compares metrics between two periods to identify trends |
+| `get_wip_analysis` | Analyzes Work in Progress by state, area, and person |
+| `get_bottlenecks` | Identifies workflow bottlenecks with severity scores and recommendations |
+| `get_team_workload` | Analyzes workload distribution across team members |
+| `get_aging_report` | Reports aging work items with urgency classification and recommendations |
+
+#### Flow Metrics
+
+- **Lead Time**: Time from work item creation to completion (measures total delivery time)
+- **Cycle Time**: Time from work started to completion (measures active work time)
+- **Throughput**: Number of items completed per period
+
+#### WIP Analysis
+
+- **By State**: Where work is accumulating
+- **By Area**: Which teams/squads are overloaded
+- **By Person**: Who has too many items assigned
+- **Aging Items**: Work that has been stuck too long
+
+#### Aging Report
+
+Items are classified by urgency based on:
+- Priority (P1 items age faster than P4)
+- Time since last update
+- Current state (blocked items are more urgent)
+- Assignment status (unassigned items need attention)
+
 ---
 
 ## Prerequisites
@@ -368,6 +402,19 @@ After configuring the MCP client, you can ask questions like:
 - "Show me the timeline of build #123"
 - "What builds are currently in progress?"
 
+### Analytics and Insights
+
+- "What's our average delivery time (lead time)?"
+- "Are we delivering faster or slower than last month?"
+- "Where is work piling up? Show me bottlenecks"
+- "Who on the team is overloaded?"
+- "What items have been stuck for too long?"
+- "Show me aging work items that need attention"
+- "How many items did we complete last week?"
+- "What's our cycle time for bugs vs user stories?"
+- "Is the 'Backend' team overloaded?"
+- "Compare this sprint's throughput to the previous sprint"
+
 ---
 
 ## Troubleshooting
@@ -459,8 +506,19 @@ mcp-azure-devops/
 │       ├── Configuration/      # App configuration classes
 │       ├── Middleware/         # HTTP middleware (authentication, etc.)
 │       ├── Models/             # DTOs and data models
+│       │   ├── WorkItemDto.cs          # Work item models
+│       │   ├── RepositoryDto.cs        # Git repository models
+│       │   ├── PullRequestDto.cs       # Pull request models
+│       │   ├── PipelineDto.cs          # Pipeline/build models
+│       │   ├── FlowMetricsDto.cs       # Flow metrics models
+│       │   └── WipAnalysisDto.cs       # WIP and aging models
 │       ├── Services/           # Azure DevOps SDK integration
 │       ├── Tools/              # MCP tool implementations
+│       │   ├── WorkItemTools.cs        # Work item operations
+│       │   ├── GitTools.cs             # Git repository operations
+│       │   ├── PullRequestTools.cs     # Pull request operations
+│       │   ├── PipelineTools.cs        # Pipeline/build operations
+│       │   └── AnalyticsTools.cs       # Analytics and metrics
 │       ├── Program.cs          # Entry point
 │       ├── appsettings.json    # App settings
 │       └── Dockerfile          # Container definition
@@ -471,7 +529,6 @@ mcp-azure-devops/
 │       ├── Models/             # DTO tests
 │       └── Tools/              # Tool behavior tests
 ├── .github/                    # GitHub templates
-├── .env.example                # Environment template (Docker)
 ├── docker-compose.yml          # Docker orchestration
 ├── CONTRIBUTING.md             # Contributor guide
 ├── CODE_OF_CONDUCT.md          # Community guidelines
@@ -544,6 +601,44 @@ Build log metadata with Id, Type, Url, LineCount, and timestamps.
 
 #### BuildTimelineRecordDto
 Timeline record (stage, job, or task) with Id, ParentId, Type, Name, State, Result, timing information, and error/warning counts.
+
+### Analytics DTOs
+
+#### FlowMetricsDto
+Flow metrics analysis results including:
+- PeriodStart, PeriodEnd, Throughput (total completed items)
+- LeadTime, CycleTime (MetricStatistics with average, median, percentiles)
+- ThroughputByPeriod (breakdown by day/week)
+- ThroughputByType (breakdown by work item type)
+- Items (optional detailed list)
+
+#### MetricStatistics
+Statistical measures for a metric including Average, Median, Percentile85, Percentile95, Min, Max, StdDev, and Count.
+
+#### WipAnalysisDto
+Work in Progress analysis including:
+- TotalWip, ByState, ByArea, ByPerson, ByType
+- AgingItems (items stuck too long)
+- Insights (auto-generated observations)
+
+#### BottleneckAnalysisDto
+Bottleneck identification results with:
+- Bottlenecks (list ordered by severity)
+- Recommendations (actionable suggestions)
+
+#### BottleneckDto
+Individual bottleneck with Type (State/Person/Area), Location, ItemCount, Severity (1-10), Description, and SampleItemIds.
+
+#### AgingReportDto
+Comprehensive aging analysis including:
+- TotalAgingItems, Summary (statistics)
+- ByUrgency (Critical/High/Medium/Low item IDs)
+- ByState, ByAssignee, ByArea (grouped counts)
+- Items (detailed list with recommendations)
+- Recommendations (overall action items)
+
+#### AgingItemDetailDto
+Detailed aging item with Id, Title, WorkItemType, State, AssignedTo, AreaPath, Priority, DaysSinceUpdate, DaysSinceCreation, Urgency, UrgencyScore, and Recommendation.
 
 ---
 
