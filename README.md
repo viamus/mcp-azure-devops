@@ -44,11 +44,8 @@ docker compose up -d
 
 **Option B - .NET CLI:**
 ```bash
-# Trust the development certificate (first time only)
-dotnet dev-certs https --trust
-
 dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
-# Server runs at https://localhost:5001
+# Server runs at http://localhost:5000
 ```
 
 ### 3. Verify it's working
@@ -58,7 +55,7 @@ dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 curl http://localhost:8080/health
 
 # .NET CLI
-curl https://localhost:5001/health
+curl http://localhost:5000/health
 ```
 
 You should see: `Healthy`
@@ -243,13 +240,20 @@ docker compose up -d --build    # Rebuild and start
 Best for: Development, debugging
 
 ```bash
-# Trust the development certificate (first time only)
-dotnet dev-certs https --trust
-
 dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 ```
 
-Server URL: `https://localhost:5001`
+Server URL: `http://localhost:5000`
+
+> **HTTPS Support**: The server can also run with HTTPS on port 5001, but this may cause certificate validation issues with some MCP clients (e.g., Claude Code). If you need HTTPS locally, configure the development certificate properly:
+> ```bash
+> # Trust the development certificate (first time only)
+> dotnet dev-certs https --trust
+>
+> # Run with HTTPS
+> dotnet run --project src/Viamus.Azure.Devops.Mcp.Server --urls "https://localhost:5001"
+> ```
+> For production environments, use a reverse proxy with properly configured TLS certificates instead.
 
 ### Option 3: Self-Contained Executable
 
@@ -349,17 +353,17 @@ openssl rand -base64 32
 
 **Without API Key authentication:**
 ```bash
-claude mcp add azure-devops --transport http https://localhost:5001
+claude mcp add azure-devops --transport http http://localhost:5000
 ```
 
 
 **With API Key authentication:**
 
 ```bash
-claude mcp add azure-devops --transport http https://localhost:5001 --header "X-API-Key: your-secret-api-key"
+claude mcp add azure-devops --transport http http://localhost:5000 --header "X-API-Key: your-secret-api-key"
 ```
 
-> **Note**: Use port `5001` (HTTPS) if running with .NET CLI, or `8080` (HTTP) if running with Docker locally. For production Docker deployments, configure a reverse proxy with HTTPS.
+> **Note**: Use port `5000` (HTTP) if running with .NET CLI, or `8080` (HTTP) if running with Docker locally. For production deployments, configure a reverse proxy with HTTPS.
 
 ## Usage Examples
 
@@ -431,7 +435,7 @@ After configuring the MCP client, you can ask questions like:
 
    # Check if port is in use
    netstat -an | grep 8080  # Docker
-   netstat -an | grep 5001  # .NET CLI
+   netstat -an | grep 5000  # .NET CLI
    ```
 
 2. Check logs for errors:
@@ -464,10 +468,10 @@ If API key authentication is enabled (`RequireApiKey: true`):
 
 ```bash
 # Test health endpoint (should work without API key)
-curl https://localhost:5001/health
+curl http://localhost:5000/health
 
 # Test with API key
-curl -H "X-API-Key: your-key" https://localhost:5001
+curl -H "X-API-Key: your-key" http://localhost:5000
 ```
 </details>
 
