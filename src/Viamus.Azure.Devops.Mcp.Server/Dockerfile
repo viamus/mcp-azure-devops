@@ -23,6 +23,11 @@ RUN dotnet publish "./Viamus.Azure.Devops.Mcp.Server.csproj" -c $BUILD_CONFIGURA
 
 # Final stage
 FROM base AS final
+#Install curl for health checks
+USER root
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+USER $APP_UID
+
 WORKDIR /app
 COPY --from=publish /app/publish .
 
