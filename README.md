@@ -114,6 +114,8 @@ This project implements an MCP server that exposes tools for querying and managi
 | `get_recent_work_items` | Gets recently changed work items |
 | `search_work_items` | Searches work items by title text |
 | `add_work_item_comment` | Adds a comment to a specific work item |
+| `create_work_item` | Creates a new work item (Bug, Task, User Story, etc.) with support for all standard fields, parent linking, and custom fields |
+| `update_work_item` | Updates an existing work item. Only specified fields are changed; omitted fields remain unchanged |
 
 ### Git Repository Tools
 
@@ -377,6 +379,10 @@ After configuring the MCP client, you can ask questions like:
 - "What work items were changed in the last 7 days?"
 - "Search for work items with 'login' in the title"
 - "Add a comment to work item #1234 saying the bug was fixed"
+- "Create a new Bug in project X titled 'Login page crashes on submit'"
+- "Create a User Story assigned to John with priority 2 under parent #100"
+- "Update work item #1234 to change state to 'Resolved' and assign to Jane"
+- "Set the iteration path of work item #567 to 'Project\Sprint 3'"
 
 ### Git Repositories
 

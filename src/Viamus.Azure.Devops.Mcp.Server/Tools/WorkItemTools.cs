@@ -255,6 +255,132 @@ public sealed class WorkItemTools
         }, JsonOptions);
     }
 
+    [McpServerTool(Name = "create_work_item")]
+    [Description("Creates a new work item in Azure DevOps. Supports setting all standard fields plus custom fields via additionalFields.")]
+    public async Task<string> CreateWorkItem(
+        [Description("The project name where the work item will be created")] string project,
+        [Description("The type of work item to create (e.g., 'Bug', 'Task', 'User Story', 'Feature', 'Epic')")] string workItemType,
+        [Description("The title of the work item")] string title,
+        [Description("The description of the work item (supports HTML)")] string? description = null,
+        [Description("The display name or email of the user to assign the work item to")] string? assignedTo = null,
+        [Description("The area path for the work item")] string? areaPath = null,
+        [Description("The iteration path for the work item")] string? iterationPath = null,
+        [Description("The initial state of the work item (e.g., 'New', 'Active')")] string? state = null,
+        [Description("The priority of the work item (1-4, where 1 is highest)")] int? priority = null,
+        [Description("The ID of the parent work item to link to")] int? parentId = null,
+        [Description("Semicolon-separated tags (e.g., 'tag1; tag2; tag3')")] string? tags = null,
+        [Description("JSON string of additional fields as key-value pairs (e.g., '{\"Custom.Field\": \"value\"}')")] string? additionalFields = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(project))
+        {
+            return JsonSerializer.Serialize(new { error = "Project name is required" }, JsonOptions);
+        }
+
+        if (string.IsNullOrWhiteSpace(workItemType))
+        {
+            return JsonSerializer.Serialize(new { error = "Work item type is required" }, JsonOptions);
+        }
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return JsonSerializer.Serialize(new { error = "Title is required" }, JsonOptions);
+        }
+
+        if (priority.HasValue && (priority.Value < 1 || priority.Value > 4))
+        {
+            return JsonSerializer.Serialize(new { error = "Priority must be between 1 and 4" }, JsonOptions);
+        }
+
+        Dictionary<string, string>? parsedAdditionalFields = null;
+        if (!string.IsNullOrWhiteSpace(additionalFields))
+        {
+            parsedAdditionalFields = ParseAdditionalFields(additionalFields);
+            if (parsedAdditionalFields == null)
+            {
+                return JsonSerializer.Serialize(new { error = "Invalid JSON format for additionalFields" }, JsonOptions);
+            }
+        }
+
+        var workItem = await _azureDevOpsService.CreateWorkItemAsync(
+            project, workItemType, title, description, assignedTo,
+            areaPath, iterationPath, state, priority, parentId, tags,
+            parsedAdditionalFields, cancellationToken);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Work item {workItem.Id} created successfully",
+            workItem
+        }, JsonOptions);
+    }
+
+    [McpServerTool(Name = "update_work_item")]
+    [Description("Updates an existing Azure DevOps work item. Only specified fields will be updated; omitted fields remain unchanged.")]
+    public async Task<string> UpdateWorkItem(
+        [Description("The ID of the work item to update")] int workItemId,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        [Description("New title for the work item")] string? title = null,
+        [Description("New description for the work item (supports HTML)")] string? description = null,
+        [Description("New assignee display name or email")] string? assignedTo = null,
+        [Description("New state for the work item (e.g., 'Active', 'Closed', 'Resolved')")] string? state = null,
+        [Description("New area path")] string? areaPath = null,
+        [Description("New iteration path")] string? iterationPath = null,
+        [Description("New priority (1-4, where 1 is highest)")] int? priority = null,
+        [Description("New semicolon-separated tags (e.g., 'tag1; tag2; tag3')")] string? tags = null,
+        [Description("JSON string of additional fields as key-value pairs (e.g., '{\"Custom.Field\": \"value\"}')")] string? additionalFields = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (workItemId <= 0)
+        {
+            return JsonSerializer.Serialize(new { error = "Work item ID must be a positive integer" }, JsonOptions);
+        }
+
+        if (priority.HasValue && (priority.Value < 1 || priority.Value > 4))
+        {
+            return JsonSerializer.Serialize(new { error = "Priority must be between 1 and 4" }, JsonOptions);
+        }
+
+        Dictionary<string, string>? parsedAdditionalFields = null;
+        if (!string.IsNullOrWhiteSpace(additionalFields))
+        {
+            parsedAdditionalFields = ParseAdditionalFields(additionalFields);
+            if (parsedAdditionalFields == null)
+            {
+                return JsonSerializer.Serialize(new { error = "Invalid JSON format for additionalFields" }, JsonOptions);
+            }
+        }
+
+        var workItem = await _azureDevOpsService.UpdateWorkItemAsync(
+            workItemId, title, description, assignedTo, state,
+            areaPath, iterationPath, priority, tags,
+            parsedAdditionalFields, project, cancellationToken);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Work item {workItem.Id} updated successfully",
+            workItem
+        }, JsonOptions);
+    }
+
+    private static Dictionary<string, string>? ParseAdditionalFields(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static List<int> ParseWorkItemIds(string workItemIds)
     {
         if (string.IsNullOrWhiteSpace(workItemIds))

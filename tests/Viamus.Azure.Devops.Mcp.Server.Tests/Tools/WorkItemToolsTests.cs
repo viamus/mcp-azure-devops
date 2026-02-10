@@ -613,4 +613,230 @@ public class WorkItemToolsTests
     }
 
     #endregion
+
+    #region CreateWorkItem Tests
+
+    [Fact]
+    public async Task CreateWorkItem_WithRequiredFieldsOnly_ShouldReturnSuccess()
+    {
+        var workItem = new WorkItemDto
+        {
+            Id = 100,
+            Title = "New Task",
+            WorkItemType = "Task",
+            State = "New"
+        };
+
+        _mockService
+            .Setup(s => s.CreateWorkItemAsync(
+                "MyProject", "Task", "New Task",
+                null, null, null, null, null, null, null, null, null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        var result = await _tools.CreateWorkItem("MyProject", "Task", "New Task");
+
+        Assert.Contains("\"success\": true", result);
+        Assert.Contains("Work item 100 created successfully", result);
+        Assert.Contains("\"id\": 100", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithAllFields_ShouldPassAllFieldsToService()
+    {
+        var workItem = new WorkItemDto { Id = 101, Title = "Full Task" };
+
+        _mockService
+            .Setup(s => s.CreateWorkItemAsync(
+                "MyProject", "User Story", "Full Task",
+                "A description", "user@test.com", "MyProject\\Area",
+                "MyProject\\Sprint 1", "Active", 2, 50, "tag1; tag2",
+                It.Is<Dictionary<string, string>>(d => d.ContainsKey("Custom.Field")),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        var result = await _tools.CreateWorkItem(
+            "MyProject", "User Story", "Full Task",
+            description: "A description",
+            assignedTo: "user@test.com",
+            areaPath: "MyProject\\Area",
+            iterationPath: "MyProject\\Sprint 1",
+            state: "Active",
+            priority: 2,
+            parentId: 50,
+            tags: "tag1; tag2",
+            additionalFields: "{\"Custom.Field\": \"value\"}");
+
+        Assert.Contains("\"success\": true", result);
+        _mockService.Verify(s => s.CreateWorkItemAsync(
+            "MyProject", "User Story", "Full Task",
+            "A description", "user@test.com", "MyProject\\Area",
+            "MyProject\\Sprint 1", "Active", 2, 50, "tag1; tag2",
+            It.Is<Dictionary<string, string>>(d => d["Custom.Field"] == "value"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithEmptyProject_ShouldReturnError()
+    {
+        var result = await _tools.CreateWorkItem("", "Task", "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Project name is required", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithEmptyTitle_ShouldReturnError()
+    {
+        var result = await _tools.CreateWorkItem("MyProject", "Task", "");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Title is required", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithEmptyWorkItemType_ShouldReturnError()
+    {
+        var result = await _tools.CreateWorkItem("MyProject", "", "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Work item type is required", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithInvalidPriority_ShouldReturnError()
+    {
+        var result = await _tools.CreateWorkItem("MyProject", "Task", "Title", priority: 5);
+
+        Assert.Contains("error", result);
+        Assert.Contains("Priority must be between 1 and 4", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithInvalidAdditionalFieldsJson_ShouldReturnError()
+    {
+        var result = await _tools.CreateWorkItem("MyProject", "Task", "Title", additionalFields: "not json");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Invalid JSON format for additionalFields", result);
+    }
+
+    [Fact]
+    public async Task CreateWorkItem_WithValidAdditionalFieldsJson_ShouldParseAndPassToService()
+    {
+        var workItem = new WorkItemDto { Id = 102, Title = "Task" };
+
+        _mockService
+            .Setup(s => s.CreateWorkItemAsync(
+                "MyProject", "Task", "Task",
+                null, null, null, null, null, null, null, null,
+                It.Is<Dictionary<string, string>>(d => d["Custom.Field1"] == "val1" && d["Custom.Field2"] == "val2"),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        var result = await _tools.CreateWorkItem("MyProject", "Task", "Task",
+            additionalFields: "{\"Custom.Field1\": \"val1\", \"Custom.Field2\": \"val2\"}");
+
+        Assert.Contains("\"success\": true", result);
+    }
+
+    #endregion
+
+    #region UpdateWorkItem Tests
+
+    [Fact]
+    public async Task UpdateWorkItem_WithTitle_ShouldReturnSuccess()
+    {
+        var workItem = new WorkItemDto
+        {
+            Id = 200,
+            Title = "Updated Title",
+            State = "Active"
+        };
+
+        _mockService
+            .Setup(s => s.UpdateWorkItemAsync(
+                200, "Updated Title", null, null, null, null, null, null, null, null, null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        var result = await _tools.UpdateWorkItem(200, title: "Updated Title");
+
+        Assert.Contains("\"success\": true", result);
+        Assert.Contains("Work item 200 updated successfully", result);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithZeroId_ShouldReturnError()
+    {
+        var result = await _tools.UpdateWorkItem(0, title: "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Work item ID must be a positive integer", result);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithNegativeId_ShouldReturnError()
+    {
+        var result = await _tools.UpdateWorkItem(-1, title: "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Work item ID must be a positive integer", result);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithInvalidPriority_ShouldReturnError()
+    {
+        var result = await _tools.UpdateWorkItem(200, priority: 0);
+
+        Assert.Contains("error", result);
+        Assert.Contains("Priority must be between 1 and 4", result);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithInvalidAdditionalFieldsJson_ShouldReturnError()
+    {
+        var result = await _tools.UpdateWorkItem(200, additionalFields: "{invalid}");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Invalid JSON format for additionalFields", result);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithProject_ShouldPassProjectToService()
+    {
+        var workItem = new WorkItemDto { Id = 200, Title = "Title" };
+
+        _mockService
+            .Setup(s => s.UpdateWorkItemAsync(
+                200, "Title", null, null, null, null, null, null, null, null, "SpecificProject",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        await _tools.UpdateWorkItem(200, project: "SpecificProject", title: "Title");
+
+        _mockService.Verify(s => s.UpdateWorkItemAsync(
+            200, "Title", null, null, null, null, null, null, null, null, "SpecificProject",
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateWorkItem_WithValidAdditionalFieldsJson_ShouldParseAndPassToService()
+    {
+        var workItem = new WorkItemDto { Id = 200, Title = "Title" };
+
+        _mockService
+            .Setup(s => s.UpdateWorkItemAsync(
+                200, null, null, null, null, null, null, null, null,
+                It.Is<Dictionary<string, string>>(d => d["Custom.Field"] == "value"),
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workItem);
+
+        var result = await _tools.UpdateWorkItem(200, additionalFields: "{\"Custom.Field\": \"value\"}");
+
+        Assert.Contains("\"success\": true", result);
+    }
+
+    #endregion
 }
