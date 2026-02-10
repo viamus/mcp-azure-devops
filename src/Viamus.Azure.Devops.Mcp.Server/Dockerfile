@@ -19,7 +19,7 @@ RUN dotnet build "./Viamus.Azure.Devops.Mcp.Server.csproj" -c $BUILD_CONFIGURATI
 # Publish stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Viamus.Azure.Devops.Mcp.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./Viamus.Azure.Devops.Mcp.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:PublishSingleFile=false /p:SelfContained=false
 
 # Final stage
 FROM base AS final
