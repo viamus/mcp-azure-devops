@@ -299,7 +299,7 @@ src/Viamus.Azure.Devops.Mcp.Server/
 │   ├── IAzureDevOpsService.cs       # Service interface
 │   └── AzureDevOpsService.cs        # Implementation
 ├── Tools/
-│   ├── WorkItemTools.cs             # Work Item tools (9)
+│   ├── WorkItemTools.cs             # Work Item tools (11)
 │   ├── GitTools.cs                  # Git Repository tools (6)
 │   ├── PullRequestTools.cs          # Pull Request tools (5)
 │   └── PipelineTools.cs             # Pipeline/Build tools (9)

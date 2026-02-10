@@ -5,6 +5,8 @@ using Microsoft.TeamFoundation.WorkItemTracking.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
 using Microsoft.VisualStudio.Services.Common;
 using Microsoft.VisualStudio.Services.WebApi;
+using Microsoft.VisualStudio.Services.WebApi.Patch;
+using Microsoft.VisualStudio.Services.WebApi.Patch.Json;
 using Viamus.Azure.Devops.Mcp.Server.Configuration;
 using Viamus.Azure.Devops.Mcp.Server.Models;
 
@@ -487,6 +489,290 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error adding comment to work item {WorkItemId}", workItemId);
+            throw;
+        }
+    }
+
+    public async Task<WorkItemDto> CreateWorkItemAsync(
+        string project,
+        string workItemType,
+        string title,
+        string? description = null,
+        string? assignedTo = null,
+        string? areaPath = null,
+        string? iterationPath = null,
+        string? state = null,
+        int? priority = null,
+        int? parentId = null,
+        string? tags = null,
+        Dictionary<string, string>? additionalFields = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Creating work item of type {WorkItemType} in project {Project}", workItemType, project);
+
+            var patchDocument = new JsonPatchDocument();
+
+            patchDocument.Add(new JsonPatchOperation
+            {
+                Operation = Operation.Add,
+                Path = "/fields/System.Title",
+                Value = title
+            });
+
+            if (!string.IsNullOrEmpty(description))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.Description",
+                    Value = description
+                });
+            }
+
+            if (!string.IsNullOrEmpty(assignedTo))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.AssignedTo",
+                    Value = assignedTo
+                });
+            }
+
+            if (!string.IsNullOrEmpty(areaPath))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.AreaPath",
+                    Value = areaPath
+                });
+            }
+
+            if (!string.IsNullOrEmpty(iterationPath))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.IterationPath",
+                    Value = iterationPath
+                });
+            }
+
+            if (!string.IsNullOrEmpty(state))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.State",
+                    Value = state
+                });
+            }
+
+            if (priority.HasValue)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/Microsoft.VSTS.Common.Priority",
+                    Value = priority.Value
+                });
+            }
+
+            if (!string.IsNullOrEmpty(tags))
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/fields/System.Tags",
+                    Value = tags
+                });
+            }
+
+            if (parentId.HasValue)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Add,
+                    Path = "/relations/-",
+                    Value = new
+                    {
+                        rel = "System.LinkTypes.Hierarchy-Reverse",
+                        url = $"{_options.OrganizationUrl}/_apis/wit/workItems/{parentId.Value}",
+                        attributes = new { comment = "Parent" }
+                    }
+                });
+            }
+
+            if (additionalFields != null)
+            {
+                foreach (var field in additionalFields)
+                {
+                    var path = field.Key.StartsWith("/fields/")
+                        ? field.Key
+                        : $"/fields/{field.Key}";
+
+                    patchDocument.Add(new JsonPatchOperation
+                    {
+                        Operation = Operation.Add,
+                        Path = path,
+                        Value = field.Value
+                    });
+                }
+            }
+
+            var result = await _witClient.CreateWorkItemAsync(
+                document: patchDocument,
+                project: project,
+                type: workItemType,
+                cancellationToken: cancellationToken);
+
+            return MapToDto(result, includeAllFields: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating work item of type {WorkItemType} in project {Project}", workItemType, project);
+            throw;
+        }
+    }
+
+    public async Task<WorkItemDto> UpdateWorkItemAsync(
+        int workItemId,
+        string? title = null,
+        string? description = null,
+        string? assignedTo = null,
+        string? state = null,
+        string? areaPath = null,
+        string? iterationPath = null,
+        int? priority = null,
+        string? tags = null,
+        Dictionary<string, string>? additionalFields = null,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Updating work item {WorkItemId}", workItemId);
+
+            var patchDocument = new JsonPatchDocument();
+
+            if (title != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.Title",
+                    Value = title
+                });
+            }
+
+            if (description != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.Description",
+                    Value = description
+                });
+            }
+
+            if (assignedTo != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.AssignedTo",
+                    Value = assignedTo
+                });
+            }
+
+            if (state != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.State",
+                    Value = state
+                });
+            }
+
+            if (areaPath != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.AreaPath",
+                    Value = areaPath
+                });
+            }
+
+            if (iterationPath != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.IterationPath",
+                    Value = iterationPath
+                });
+            }
+
+            if (priority.HasValue)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/Microsoft.VSTS.Common.Priority",
+                    Value = priority.Value
+                });
+            }
+
+            if (tags != null)
+            {
+                patchDocument.Add(new JsonPatchOperation
+                {
+                    Operation = Operation.Replace,
+                    Path = "/fields/System.Tags",
+                    Value = tags
+                });
+            }
+
+            if (additionalFields != null)
+            {
+                foreach (var field in additionalFields)
+                {
+                    var path = field.Key.StartsWith("/fields/")
+                        ? field.Key
+                        : $"/fields/{field.Key}";
+
+                    patchDocument.Add(new JsonPatchOperation
+                    {
+                        Operation = Operation.Replace,
+                        Path = path,
+                        Value = field.Value
+                    });
+                }
+            }
+
+            // If no fields to update, just return the current work item
+            if (patchDocument.Count == 0)
+            {
+                var currentWorkItem = await GetWorkItemAsync(workItemId, project, cancellationToken);
+                return currentWorkItem!;
+            }
+
+            var result = await _witClient.UpdateWorkItemAsync(
+                document: patchDocument,
+                id: workItemId,
+                project: project ?? _options.DefaultProject,
+                cancellationToken: cancellationToken);
+
+            return MapToDto(result, includeAllFields: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating work item {WorkItemId}", workItemId);
             throw;
         }
     }
