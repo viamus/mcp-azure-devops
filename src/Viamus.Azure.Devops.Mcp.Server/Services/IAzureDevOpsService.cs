@@ -75,6 +75,68 @@ public interface IAzureDevOpsService
         string? project = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates a new work item in the specified project.
+    /// </summary>
+    /// <param name="project">The project name.</param>
+    /// <param name="workItemType">The work item type (e.g., Bug, Task, User Story).</param>
+    /// <param name="title">The work item title.</param>
+    /// <param name="description">Optional description.</param>
+    /// <param name="assignedTo">Optional user to assign to.</param>
+    /// <param name="areaPath">Optional area path.</param>
+    /// <param name="iterationPath">Optional iteration path.</param>
+    /// <param name="state">Optional initial state.</param>
+    /// <param name="priority">Optional priority (1-4).</param>
+    /// <param name="parentId">Optional parent work item ID to link as child.</param>
+    /// <param name="tags">Optional semicolon-separated tags.</param>
+    /// <param name="additionalFields">Optional dictionary of additional field reference names and values.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created work item.</returns>
+    Task<WorkItemDto> CreateWorkItemAsync(
+        string project,
+        string workItemType,
+        string title,
+        string? description = null,
+        string? assignedTo = null,
+        string? areaPath = null,
+        string? iterationPath = null,
+        string? state = null,
+        int? priority = null,
+        int? parentId = null,
+        string? tags = null,
+        Dictionary<string, string>? additionalFields = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates an existing work item.
+    /// </summary>
+    /// <param name="workItemId">The work item ID to update.</param>
+    /// <param name="title">Optional new title.</param>
+    /// <param name="description">Optional new description.</param>
+    /// <param name="assignedTo">Optional new assignee.</param>
+    /// <param name="state">Optional new state.</param>
+    /// <param name="areaPath">Optional new area path.</param>
+    /// <param name="iterationPath">Optional new iteration path.</param>
+    /// <param name="priority">Optional new priority (1-4).</param>
+    /// <param name="tags">Optional new tags.</param>
+    /// <param name="additionalFields">Optional dictionary of additional field reference names and values.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated work item.</returns>
+    Task<WorkItemDto> UpdateWorkItemAsync(
+        int workItemId,
+        string? title = null,
+        string? description = null,
+        string? assignedTo = null,
+        string? state = null,
+        string? areaPath = null,
+        string? iterationPath = null,
+        int? priority = null,
+        string? tags = null,
+        Dictionary<string, string>? additionalFields = null,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
     #region Git Operations
 
     /// <summary>
