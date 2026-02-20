@@ -1177,6 +1177,72 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
     }
 
+    public async Task<PullRequestDto> CreatePullRequestAsync(
+        string repositoryNameOrId,
+        string sourceRefName,
+        string targetRefName,
+        string title,
+        string? description = null,
+        bool isDraft = false,
+        string? project = null,
+        IEnumerable<string>? reviewerIds = null,
+        IEnumerable<int>? workItemIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectName = project ?? _options.DefaultProject;
+            _logger.LogDebug("Creating pull request in repository {Repository}", repositoryNameOrId);
+
+            var gitPullRequest = new GitPullRequest
+            {
+                Title = title,
+                Description = description,
+                SourceRefName = sourceRefName,
+                TargetRefName = targetRefName,
+                IsDraft = isDraft
+            };
+
+            if (reviewerIds != null)
+            {
+                var reviewers = reviewerIds
+                    .Where(id => Guid.TryParse(id, out _))
+                    .Select(id => new IdentityRefWithVote { Id = id })
+                    .ToList();
+
+                if (reviewers.Count > 0)
+                {
+                    gitPullRequest.Reviewers = reviewers.ToArray();
+                }
+            }
+
+            if (workItemIds != null)
+            {
+                var workItemRefs = workItemIds
+                    .Select(id => new ResourceRef { Id = id.ToString(), Url = $"{_options.OrganizationUrl}/_apis/wit/workItems/{id}" })
+                    .ToList();
+
+                if (workItemRefs.Count > 0)
+                {
+                    gitPullRequest.WorkItemRefs = workItemRefs.ToArray();
+                }
+            }
+
+            var result = await _gitClient.CreatePullRequestAsync(
+                gitPullRequestToCreate: gitPullRequest,
+                repositoryId: repositoryNameOrId,
+                project: projectName,
+                cancellationToken: cancellationToken);
+
+            return MapToPullRequestDto(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating pull request in repository {Repository}", repositoryNameOrId);
+            throw;
+        }
+    }
+
     private static PullRequestStatus? ParsePullRequestStatus(string? status)
     {
         if (string.IsNullOrEmpty(status))

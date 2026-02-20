@@ -378,6 +378,162 @@ public class PullRequestToolsTests
 
     #endregion
 
+    #region CreatePullRequest Tests
+
+    [Fact]
+    public async Task CreatePullRequest_WithRequiredFieldsOnly_ShouldReturnSuccess()
+    {
+        var pullRequest = new PullRequestDto
+        {
+            PullRequestId = 42,
+            Title = "Add new feature",
+            SourceBranch = "refs/heads/feature",
+            TargetBranch = "refs/heads/main",
+            Status = "Active"
+        };
+
+        _mockService
+            .Setup(s => s.CreatePullRequestAsync(
+                "my-repo", "refs/heads/feature", "refs/heads/main", "Add new feature",
+                null, false, null, null, null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        var result = await _tools.CreatePullRequest("my-repo", "refs/heads/feature", "refs/heads/main", "Add new feature");
+
+        Assert.Contains("\"success\": true", result);
+        Assert.Contains("Pull request 42 created successfully", result);
+        Assert.Contains("\"pullRequestId\": 42", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithAllFields_ShouldPassAllToService()
+    {
+        var pullRequest = new PullRequestDto
+        {
+            PullRequestId = 43,
+            Title = "Full PR",
+            SourceBranch = "refs/heads/feature",
+            TargetBranch = "refs/heads/main",
+            Status = "Active",
+            IsDraft = true
+        };
+
+        _mockService
+            .Setup(s => s.CreatePullRequestAsync(
+                "my-repo", "refs/heads/feature", "refs/heads/main", "Full PR",
+                "A description", true, "MyProject",
+                It.Is<IEnumerable<string>>(r => r.Count() == 2),
+                It.Is<IEnumerable<int>>(w => w.Count() == 2),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        var result = await _tools.CreatePullRequest(
+            "my-repo", "refs/heads/feature", "refs/heads/main", "Full PR",
+            description: "A description",
+            isDraft: true,
+            project: "MyProject",
+            reviewerIds: "guid1;guid2",
+            workItemIds: "123;456");
+
+        Assert.Contains("\"success\": true", result);
+        Assert.Contains("\"isDraft\": true", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithEmptyRepoName_ShouldReturnError()
+    {
+        var result = await _tools.CreatePullRequest("", "refs/heads/feature", "refs/heads/main", "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Repository name or ID is required", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithEmptySourceRef_ShouldReturnError()
+    {
+        var result = await _tools.CreatePullRequest("repo", "", "refs/heads/main", "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Source branch is required", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithEmptyTargetRef_ShouldReturnError()
+    {
+        var result = await _tools.CreatePullRequest("repo", "refs/heads/feature", "", "Title");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Target branch is required", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithEmptyTitle_ShouldReturnError()
+    {
+        var result = await _tools.CreatePullRequest("repo", "refs/heads/feature", "refs/heads/main", "");
+
+        Assert.Contains("error", result);
+        Assert.Contains("Title is required", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_WithInvalidWorkItemIds_ShouldIgnoreInvalidOnes()
+    {
+        var pullRequest = new PullRequestDto
+        {
+            PullRequestId = 44,
+            Title = "PR with work items",
+            SourceBranch = "refs/heads/feature",
+            TargetBranch = "refs/heads/main",
+            Status = "Active"
+        };
+
+        _mockService
+            .Setup(s => s.CreatePullRequestAsync(
+                "repo", "refs/heads/feature", "refs/heads/main", "PR with work items",
+                null, false, null, null,
+                It.Is<IEnumerable<int>>(w => w.Count() == 1 && w.First() == 123),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        var result = await _tools.CreatePullRequest(
+            "repo", "refs/heads/feature", "refs/heads/main", "PR with work items",
+            workItemIds: "123;abc;xyz");
+
+        Assert.Contains("\"success\": true", result);
+    }
+
+    [Fact]
+    public async Task CreatePullRequest_AsDraft_ShouldPassIsDraftTrue()
+    {
+        var pullRequest = new PullRequestDto
+        {
+            PullRequestId = 45,
+            Title = "Draft PR",
+            IsDraft = true,
+            Status = "Active"
+        };
+
+        _mockService
+            .Setup(s => s.CreatePullRequestAsync(
+                "repo", "refs/heads/feature", "refs/heads/main", "Draft PR",
+                null, true, null, null, null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pullRequest);
+
+        var result = await _tools.CreatePullRequest(
+            "repo", "refs/heads/feature", "refs/heads/main", "Draft PR",
+            isDraft: true);
+
+        Assert.Contains("\"success\": true", result);
+        _mockService.Verify(s => s.CreatePullRequestAsync(
+            "repo", "refs/heads/feature", "refs/heads/main", "Draft PR",
+            null, true, null, null, null,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
+
     #region QueryPullRequests Tests
 
     [Fact]

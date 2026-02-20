@@ -168,6 +168,63 @@ public sealed class PullRequestTools
         }, JsonOptions);
     }
 
+    [McpServerTool(Name = "create_pull_request")]
+    [Description("Creates a new pull request in a Git repository. Supports setting title, description, source/target branches, draft status, reviewers, and linked work items.")]
+    public async Task<string> CreatePullRequest(
+        [Description("The repository name or ID")] string repositoryNameOrId,
+        [Description("The source branch (e.g., 'refs/heads/feature-branch')")] string sourceRefName,
+        [Description("The target branch (e.g., 'refs/heads/main')")] string targetRefName,
+        [Description("The pull request title")] string title,
+        [Description("The pull request description")] string? description = null,
+        [Description("Whether to create as a draft pull request (default: false)")] bool isDraft = false,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        [Description("Semicolon-separated reviewer GUIDs (e.g., 'guid1;guid2')")] string? reviewerIds = null,
+        [Description("Semicolon-separated work item IDs to link (e.g., '123;456')")] string? workItemIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryNameOrId))
+        {
+            return JsonSerializer.Serialize(new { error = "Repository name or ID is required" }, JsonOptions);
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceRefName))
+        {
+            return JsonSerializer.Serialize(new { error = "Source branch is required" }, JsonOptions);
+        }
+
+        if (string.IsNullOrWhiteSpace(targetRefName))
+        {
+            return JsonSerializer.Serialize(new { error = "Target branch is required" }, JsonOptions);
+        }
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return JsonSerializer.Serialize(new { error = "Title is required" }, JsonOptions);
+        }
+
+        var parsedReviewerIds = string.IsNullOrWhiteSpace(reviewerIds)
+            ? null
+            : reviewerIds.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var parsedWorkItemIds = string.IsNullOrWhiteSpace(workItemIds)
+            ? null
+            : workItemIds.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(id => int.TryParse(id, out _))
+                .Select(int.Parse);
+
+        var pullRequest = await _azureDevOpsService.CreatePullRequestAsync(
+            repositoryNameOrId, sourceRefName, targetRefName, title,
+            description, isDraft, project, parsedReviewerIds, parsedWorkItemIds,
+            cancellationToken);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Pull request {pullRequest.PullRequestId} created successfully",
+            pullRequest
+        }, JsonOptions);
+    }
+
     [McpServerTool(Name = "query_pull_requests")]
     [Description("Advanced query for pull requests with multiple combined filters. Allows filtering by status, branches, dates, creator, and reviewer simultaneously.")]
     public async Task<string> QueryPullRequests(
