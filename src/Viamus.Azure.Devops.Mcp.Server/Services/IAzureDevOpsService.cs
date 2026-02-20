@@ -287,6 +287,32 @@ public interface IAzureDevOpsService
         int top = 50,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates a new pull request in the specified repository.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="sourceRefName">The source branch (e.g., refs/heads/feature-branch).</param>
+    /// <param name="targetRefName">The target branch (e.g., refs/heads/main).</param>
+    /// <param name="title">The pull request title.</param>
+    /// <param name="description">Optional pull request description.</param>
+    /// <param name="isDraft">Whether to create the PR as a draft.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="reviewerIds">Optional reviewer GUIDs.</param>
+    /// <param name="workItemIds">Optional work item IDs to link.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created pull request.</returns>
+    Task<PullRequestDto> CreatePullRequestAsync(
+        string repositoryNameOrId,
+        string sourceRefName,
+        string targetRefName,
+        string title,
+        string? description = null,
+        bool isDraft = false,
+        string? project = null,
+        IEnumerable<string>? reviewerIds = null,
+        IEnumerable<int>? workItemIds = null,
+        CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Pipeline/Build Operations
