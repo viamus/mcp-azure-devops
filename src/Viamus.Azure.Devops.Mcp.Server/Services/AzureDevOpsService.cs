@@ -1229,9 +1229,9 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             }
 
             var result = await _gitClient.CreatePullRequestAsync(
-                gitPullRequest,
-                repositoryNameOrId,
-                projectName,
+                gitPullRequestToCreate: gitPullRequest,
+                repositoryId: repositoryNameOrId,
+                project: projectName,
                 cancellationToken: cancellationToken);
 
             return MapToPullRequestDto(result);
