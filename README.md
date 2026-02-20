@@ -20,6 +20,15 @@ git clone https://github.com/viamus/mcp-azure-devops.git
 cd mcp-azure-devops
 ```
 
+**Option A — `.env` file (recommended for Docker):**
+
+```bash
+cp .env.example .env
+# Edit .env with your Azure DevOps credentials
+```
+
+**Option B — `appsettings.json` (for .NET CLI):**
+
 Edit `src/Viamus.Azure.Devops.Mcp.Server/appsettings.json` with your Azure DevOps credentials:
 
 ```json
@@ -133,10 +142,12 @@ This project implements an MCP server that exposes tools for querying and managi
 | Tool | Description |
 |------|-------------|
 | `get_pull_requests` | Lists pull requests with optional filters (status, creator, reviewer, branches) |
-| `get_pull_request` | Gets details of a specific pull request by ID |
+| `get_pull_request` | Gets details of a specific pull request by ID within a repository |
+| `get_pull_request_by_id` | Gets details of a pull request by ID only, searching across all repositories in the project |
 | `get_pull_request_threads` | Gets comment threads for a pull request |
 | `search_pull_requests` | Searches pull requests by text in title or description |
 | `query_pull_requests` | Advanced query with multiple combined filters |
+| `create_pull_request` | Creates a new pull request with title, description, source/target branches, draft flag, reviewers, and linked work items |
 
 ### Pipeline/Build Tools
 
@@ -208,9 +219,9 @@ Items are classified by urgency based on:
 
 | Scope | Permission | Required for |
 |-------|------------|--------------|
-| Work Items | Read & Write | Work item operations |
-| Code | Read | Git repositories and Pull Requests |
-| Build | Read | Pipelines and Builds |
+| Work Items | Read & Write | Get, query, create, update work items and add comments |
+| Code | Read & Write | Git repositories, branches, files, and pull requests (Write required to create PRs) |
+| Build | Read | Pipelines and builds |
 
 5. Click **Create** and **copy the token immediately** (you won't see it again!)
 
@@ -222,9 +233,16 @@ Items are classified by urgency based on:
 
 Best for: Production use, quick setup without .NET installed
 
-```bash
-docker compose up -d
-```
+1. Create your `.env` file from the template:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Azure DevOps credentials
+   ```
+
+2. Start the server:
+   ```bash
+   docker compose up -d
+   ```
 
 Server URL: `http://localhost:8080` (internal)
 
@@ -311,11 +329,11 @@ Or via environment variables:
 # .NET CLI
 ServerSecurity__ApiKey=your-secret-key ServerSecurity__RequireApiKey=true dotnet run
 
-# Docker
-docker compose up -d  # Configure in .env file
+# Docker — configure in .env file (see .env.example)
+docker compose up -d
 ```
 
-For Docker, add to your `.env` file:
+For Docker, add to your `.env` file (see `.env.example` for the full template):
 ```bash
 MCP_API_KEY=your-secret-api-key
 MCP_REQUIRE_API_KEY=true
@@ -397,10 +415,14 @@ After configuring the MCP client, you can ask questions like:
 
 - "Show me all active pull requests in the 'my-repo' repository"
 - "Get details of pull request #123"
+- "Find pull request #456 anywhere in the project"
 - "What comments are on PR #456?"
 - "Search for pull requests related to 'authentication'"
 - "Show me PRs targeting the 'main' branch"
 - "List PRs created by user@email.com"
+- "Create a pull request from 'feature/login' to 'main' titled 'Add login page'"
+- "Open a draft PR from my branch to main with a description of the changes"
+- "Create a PR and link it to work items #123 and #456"
 
 ### Pipelines and Builds
 
@@ -538,8 +560,10 @@ mcp-azure-devops/
 │       ├── Middleware/         # Middleware tests
 │       ├── Models/             # DTO tests
 │       └── Tools/              # Tool behavior tests
-├── .github/                    # GitHub templates
+├── .github/                    # GitHub templates and workflows
+├── .env.example                # Environment variable template (copy to .env)
 ├── docker-compose.yml          # Docker orchestration
+├── install-mcp-azure-devops.ps1 # Windows automated installer
 ├── CONTRIBUTING.md             # Contributor guide
 ├── CODE_OF_CONDUCT.md          # Community guidelines
 ├── SECURITY.md                 # Security policy

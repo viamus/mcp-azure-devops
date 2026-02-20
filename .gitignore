@@ -109,6 +109,7 @@ Desktop.ini
 docker-compose.override.yml
 .env
 .env.*
+!.env.example
 
 ##############################
 # Publish / Artifacts
