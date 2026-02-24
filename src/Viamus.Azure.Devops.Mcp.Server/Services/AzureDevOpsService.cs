@@ -39,6 +39,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         "Microsoft.VSTS.Common.Severity",
         "System.CreatedDate",
         "System.ChangedDate",
+        "Microsoft.VSTS.Common.ActivatedDate",
+        "Microsoft.VSTS.Common.ClosedDate",
         "System.CreatedBy",
         "System.ChangedBy",
         "System.Reason",
@@ -54,6 +56,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         "System.AssignedTo",
         "Microsoft.VSTS.Common.Priority",
         "System.ChangedDate",
+        "Microsoft.VSTS.Common.ActivatedDate",
+        "Microsoft.VSTS.Common.ClosedDate",
         "System.Parent"
     ];
 
@@ -294,6 +298,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             AssignedTo = GetIdentityFieldValue(fields, "System.AssignedTo"),
             Priority = GetFieldValue<object>(fields, "Microsoft.VSTS.Common.Priority")?.ToString(),
             ChangedDate = GetFieldValue<DateTime?>(fields, "System.ChangedDate"),
+            ActivatedDate = GetFieldValue<DateTime?>(fields, "Microsoft.VSTS.Common.ActivatedDate"),
+            ClosedDate = GetFieldValue<DateTime?>(fields, "Microsoft.VSTS.Common.ClosedDate"),
             ParentId = GetFieldValue<int?>(fields, "System.Parent")
         };
     }
@@ -316,6 +322,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             Severity = GetFieldValue<string>(fields, "Microsoft.VSTS.Common.Severity"),
             CreatedDate = GetFieldValue<DateTime?>(fields, "System.CreatedDate"),
             ChangedDate = GetFieldValue<DateTime?>(fields, "System.ChangedDate"),
+            ActivatedDate = GetFieldValue<DateTime?>(fields, "Microsoft.VSTS.Common.ActivatedDate"),
+            ClosedDate = GetFieldValue<DateTime?>(fields, "Microsoft.VSTS.Common.ClosedDate"),
             CreatedBy = GetIdentityFieldValue(fields, "System.CreatedBy"),
             ChangedBy = GetIdentityFieldValue(fields, "System.ChangedBy"),
             Reason = GetFieldValue<string>(fields, "System.Reason"),

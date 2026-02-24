@@ -13,5 +13,7 @@ public sealed record WorkItemSummaryDto
     public string? AssignedTo { get; init; }
     public string? Priority { get; init; }
     public DateTime? ChangedDate { get; init; }
+    public DateTime? ActivatedDate { get; init; }
+    public DateTime? ClosedDate { get; init; }
     public int? ParentId { get; init; }
 }
