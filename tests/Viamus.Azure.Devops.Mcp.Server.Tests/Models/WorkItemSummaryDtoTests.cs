@@ -121,6 +121,8 @@ public class WorkItemSummaryDtoTests
             AssignedTo = null,
             Priority = null,
             ChangedDate = null,
+            ActivatedDate = null,
+            ClosedDate = null,
             ParentId = null
         };
 
@@ -129,6 +131,8 @@ public class WorkItemSummaryDtoTests
         Assert.Null(dto.AssignedTo);
         Assert.Null(dto.Priority);
         Assert.Null(dto.ChangedDate);
+        Assert.Null(dto.ActivatedDate);
+        Assert.Null(dto.ClosedDate);
         Assert.Null(dto.ParentId);
     }
 
@@ -153,6 +157,8 @@ public class WorkItemSummaryDtoTests
         Assert.Contains("AssignedTo", properties);
         Assert.Contains("Priority", properties);
         Assert.Contains("ChangedDate", properties);
+        Assert.Contains("ActivatedDate", properties);
+        Assert.Contains("ClosedDate", properties);
         Assert.Contains("ParentId", properties);
     }
 }

@@ -17,6 +17,8 @@ public sealed record WorkItemDto
     public string? Severity { get; init; }
     public DateTime? CreatedDate { get; init; }
     public DateTime? ChangedDate { get; init; }
+    public DateTime? ActivatedDate { get; init; }
+    public DateTime? ClosedDate { get; init; }
     public string? CreatedBy { get; init; }
     public string? ChangedBy { get; init; }
     public string? Reason { get; init; }
