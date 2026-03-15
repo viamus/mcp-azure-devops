@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Microsoft.TeamFoundation.Build.WebApi;
 using Microsoft.TeamFoundation.SourceControl.WebApi;
+using Microsoft.TeamFoundation.Wiki.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi;
 using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
 using Microsoft.VisualStudio.Services.Common;
@@ -23,6 +24,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
     private readonly WorkItemTrackingHttpClient _witClient;
     private readonly GitHttpClient _gitClient;
     private readonly BuildHttpClient _buildClient;
+    private readonly WikiHttpClient _wikiClient;
     private bool _disposed;
 
     private static readonly string[] DefaultFields =
@@ -71,6 +73,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         _witClient = _connection.GetClient<WorkItemTrackingHttpClient>();
         _gitClient = _connection.GetClient<GitHttpClient>();
         _buildClient = _connection.GetClient<BuildHttpClient>();
+        _wikiClient = _connection.GetClient<WikiHttpClient>();
 
         _logger.LogInformation("Azure DevOps service initialized for organization: {OrganizationUrl}", _options.OrganizationUrl);
     }
@@ -1628,6 +1631,174 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
     #endregion
 
+    #region Wiki Operations
+
+    public async Task<IReadOnlyList<WikiDto>> GetWikisAsync(string? project = null, CancellationToken cancellationToken = default)
+    {
+        var projectName = project ?? _options.DefaultProject;
+
+        _logger.LogInformation("Getting wikis for project: {Project}", projectName ?? "(all)");
+
+        try
+        {
+            var wikis = await _wikiClient.GetAllWikisAsync(project: projectName, cancellationToken: cancellationToken);
+
+            _logger.LogInformation("Found {Count} wikis", wikis.Count);
+
+            return wikis.Select(MapToWikiDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting wikis for project: {Project}", projectName);
+            throw;
+        }
+    }
+
+    public async Task<WikiDto?> GetWikiAsync(string wikiIdentifier, string? project = null, CancellationToken cancellationToken = default)
+    {
+        var projectName = project ?? _options.DefaultProject;
+
+        _logger.LogInformation("Getting wiki: {WikiIdentifier} in project: {Project}", wikiIdentifier, projectName ?? "(default)");
+
+        try
+        {
+            var wiki = await _wikiClient.GetWikiAsync(project: projectName, wikiIdentifier: wikiIdentifier, cancellationToken: cancellationToken);
+            return MapToWikiDto(wiki);
+        }
+        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Wiki '{WikiIdentifier}' not found", wikiIdentifier);
+            return null;
+        }
+    }
+
+    public async Task<WikiPageDto?> GetWikiPageAsync(
+        string wikiIdentifier,
+        string path,
+        bool includeContent = true,
+        string? version = null,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        var projectName = project ?? _options.DefaultProject;
+
+        _logger.LogInformation("Getting wiki page: {Path} from wiki: {WikiIdentifier}", path, wikiIdentifier);
+
+        try
+        {
+            var versionDescriptor = !string.IsNullOrWhiteSpace(version)
+                ? new GitVersionDescriptor { Version = version, VersionType = GitVersionType.Branch }
+                : null;
+
+            var page = await _wikiClient.GetPageAsync(
+                project: projectName,
+                wikiIdentifier: wikiIdentifier,
+                path: path,
+                recursionLevel: VersionControlRecursionType.None,
+                versionDescriptor: versionDescriptor,
+                includeContent: includeContent,
+                cancellationToken: cancellationToken);
+
+            return MapToWikiPageDto(page.Page, page.Page.Content);
+        }
+        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Wiki page '{Path}' not found in wiki '{WikiIdentifier}'", path, wikiIdentifier);
+            return null;
+        }
+    }
+
+    public async Task<WikiPageDto?> GetWikiPageTreeAsync(
+        string wikiIdentifier,
+        string path = "/",
+        string recursionLevel = "OneLevel",
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        var projectName = project ?? _options.DefaultProject;
+
+        _logger.LogInformation("Getting wiki page tree: {Path} from wiki: {WikiIdentifier} with recursion: {Recursion}", path, wikiIdentifier, recursionLevel);
+
+        try
+        {
+            var recursion = recursionLevel.Equals("Full", StringComparison.OrdinalIgnoreCase)
+                ? VersionControlRecursionType.Full
+                : VersionControlRecursionType.OneLevel;
+
+            var page = await _wikiClient.GetPageAsync(
+                project: projectName,
+                wikiIdentifier: wikiIdentifier,
+                path: path,
+                recursionLevel: recursion,
+                includeContent: false,
+                cancellationToken: cancellationToken);
+
+            return MapToWikiPageDtoWithSubPages(page.Page);
+        }
+        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Wiki page '{Path}' not found in wiki '{WikiIdentifier}'", path, wikiIdentifier);
+            return null;
+        }
+    }
+
+    private static WikiDto MapToWikiDto(WikiV2 wiki)
+    {
+        return new WikiDto
+        {
+            Id = wiki.Id.ToString(),
+            Name = wiki.Name,
+            Type = wiki.Type.ToString(),
+            Url = wiki.Url,
+            RemoteUrl = wiki.RemoteUrl,
+            ProjectId = wiki.ProjectId.ToString(),
+            RepositoryId = wiki.RepositoryId.ToString(),
+            MappedPath = wiki.MappedPath,
+            Versions = wiki.Versions?.Select(v => v.Version).ToList()
+        };
+    }
+
+    private static WikiPageDto MapToWikiPageDto(WikiPage page, string? content = null)
+    {
+        return new WikiPageDto
+        {
+            Id = page.Id,
+            Path = page.Path,
+            Content = content ?? page.Content,
+            Order = page.Order,
+            GitItemPath = page.GitItemPath,
+            RemoteUrl = page.RemoteUrl,
+            IsParentPage = page.IsParentPage
+        };
+    }
+
+    private static WikiPageDto MapToWikiPageDtoWithSubPages(WikiPage page)
+    {
+        return new WikiPageDto
+        {
+            Id = page.Id,
+            Path = page.Path,
+            Order = page.Order,
+            GitItemPath = page.GitItemPath,
+            RemoteUrl = page.RemoteUrl,
+            IsParentPage = page.IsParentPage,
+            SubPages = page.SubPages?.Select(sp => new WikiPageSummaryDto
+            {
+                Id = sp.Id,
+                Path = sp.Path,
+                Order = sp.Order,
+                GitItemPath = sp.GitItemPath,
+                RemoteUrl = sp.RemoteUrl,
+                IsParentPage = sp.IsParentPage
+            }).ToList()
+        };
+    }
+
+    #endregion
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -1635,6 +1806,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         _witClient.Dispose();
         _gitClient.Dispose();
         _buildClient.Dispose();
+        _wikiClient.Dispose();
         _connection.Dispose();
         _disposed = true;
     }
