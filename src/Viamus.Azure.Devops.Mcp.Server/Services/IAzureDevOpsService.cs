@@ -418,4 +418,59 @@ public interface IAzureDevOpsService
         CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Wiki Operations
+
+    /// <summary>
+    /// Gets all wikis in a project.
+    /// </summary>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of wikis.</returns>
+    Task<IReadOnlyList<WikiDto>> GetWikisAsync(string? project = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific wiki by its identifier (name or ID).
+    /// </summary>
+    /// <param name="wikiIdentifier">The wiki name or ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The wiki details.</returns>
+    Task<WikiDto?> GetWikiAsync(string wikiIdentifier, string? project = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a wiki page by path, including its content.
+    /// </summary>
+    /// <param name="wikiIdentifier">The wiki name or ID.</param>
+    /// <param name="path">The page path (e.g., "/Home", "/Getting-Started/Installation").</param>
+    /// <param name="includeContent">Whether to include the page content (Markdown).</param>
+    /// <param name="version">Optional version/branch of the wiki.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The wiki page details.</returns>
+    Task<WikiPageDto?> GetWikiPageAsync(
+        string wikiIdentifier,
+        string path,
+        bool includeContent = true,
+        string? version = null,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the sub-pages of a wiki page (page tree).
+    /// </summary>
+    /// <param name="wikiIdentifier">The wiki name or ID.</param>
+    /// <param name="path">The parent page path (default is root "/").</param>
+    /// <param name="recursionLevel">How deep to recurse: "OneLevel" or "Full".</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The wiki page with its sub-pages.</returns>
+    Task<WikiPageDto?> GetWikiPageTreeAsync(
+        string wikiIdentifier,
+        string path = "/",
+        string recursionLevel = "OneLevel",
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
+    #endregion
 }
