@@ -35,6 +35,11 @@ public sealed record WorkItemDto
     /// List of pull request IDs linked to this work item.
     /// </summary>
     public List<WorkItemPullRequestLinkDto>? LinkedPullRequests { get; init; }
+
+    /// <summary>
+    /// List of all normalized relationships associated with this work item.
+    /// </summary>
+    public List<WorkItemRelationDto>? Relations { get; init; }
 }
 
 /// <summary>

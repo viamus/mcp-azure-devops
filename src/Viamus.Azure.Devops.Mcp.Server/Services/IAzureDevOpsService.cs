@@ -17,6 +17,16 @@ public interface IAzureDevOpsService
     Task<WorkItemDto?> GetWorkItemAsync(int workItemId, string? project = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets a work item by its ID, with optional relationship details.
+    /// </summary>
+    /// <param name="workItemId">The work item ID.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="includeRelations">Whether to include relation collections.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The work item details.</returns>
+    Task<WorkItemDto?> GetWorkItemAsync(int workItemId, string? project = null, bool includeRelations = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets multiple work items by their IDs.
     /// </summary>
     /// <param name="workItemIds">The work item IDs.</param>
@@ -24,6 +34,37 @@ public interface IAzureDevOpsService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of work items.</returns>
     Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(IEnumerable<int> workItemIds, string? project = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets multiple work items by their IDs, with optional relationship details.
+    /// </summary>
+    /// <param name="workItemIds">The work item IDs.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="includeRelations">Whether to include relation collections.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of work items.</returns>
+    Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(IEnumerable<int> workItemIds, string? project = null, bool includeRelations = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets normalized relations for a work item.
+    /// </summary>
+    /// <param name="workItemId">The work item ID.</param>
+    /// <param name="relationTypeFilter">Optional filter by relation type name.</param>
+    /// <param name="expandTargetSummary">Whether to fetch full work item summary of the target work items.</param>
+    /// <param name="project">The project name (optional).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Result containing relations.</returns>
+    Task<WorkItemRelationsResultDto?> GetWorkItemRelationsAsync(int workItemId, string? relationTypeFilter = null, bool expandTargetSummary = false, string? project = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recursively retrieves a hierarchical parent/child tree of work items.
+    /// </summary>
+    /// <param name="workItemId">The root work item ID.</param>
+    /// <param name="maxDepth">Maximum depth to recurse (default 2, max 5).</param>
+    /// <param name="project">The project name (optional).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The root tree node.</returns>
+    Task<WorkItemTreeNodeDto?> GetWorkItemTreeAsync(int workItemId, int maxDepth = 2, string? project = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Queries work items using WIQL (Work Item Query Language).

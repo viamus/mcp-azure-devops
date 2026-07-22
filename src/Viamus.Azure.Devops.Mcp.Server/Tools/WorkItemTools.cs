@@ -38,10 +38,11 @@ public sealed class WorkItemTools
         [Description("The ID of the work item to retrieve")] int workItemId,
         [Description("The project name (optional if default project is configured)")] string? project = null,
         [Description("The Azure DevOps organization alias or URL (optional if default organization is configured)")] string? organization = null,
+        [Description("Whether to include the work item's relationship collection (default: false)")] bool includeRelations = false,
         CancellationToken cancellationToken = default)
     {
         using var organizationScope = _organizationContextAccessor.Use(organization);
-        var workItem = await _azureDevOpsService.GetWorkItemAsync(workItemId, project, cancellationToken);
+        var workItem = await _azureDevOpsService.GetWorkItemAsync(workItemId, project, includeRelations, cancellationToken);
 
         if (workItem is null)
         {
@@ -100,6 +101,7 @@ public sealed class WorkItemTools
         [Description("Comma-separated list of work item IDs to retrieve (e.g., '123,456,789')")] string workItemIds,
         [Description("The project name (optional if default project is configured)")] string? project = null,
         [Description("The Azure DevOps organization alias or URL (optional if default organization is configured)")] string? organization = null,
+        [Description("Whether to include the work items' relationship collections (default: false)")] bool includeRelations = false,
         CancellationToken cancellationToken = default)
     {
         using var organizationScope = _organizationContextAccessor.Use(organization);
@@ -110,7 +112,7 @@ public sealed class WorkItemTools
             return JsonSerializer.Serialize(new { error = "No valid work item IDs provided" }, JsonOptions);
         }
 
-        var workItems = await _azureDevOpsService.GetWorkItemsAsync(ids, project, cancellationToken);
+        var workItems = await _azureDevOpsService.GetWorkItemsAsync(ids, project, includeRelations, cancellationToken);
         return JsonSerializer.Serialize(new { count = workItems.Count, workItems }, JsonOptions);
     }
 
@@ -289,6 +291,57 @@ public sealed class WorkItemTools
             relationType = normalizedRelationType,
             workItem
         }, JsonOptions);
+    }
+
+    [McpServerTool(Name = "get_work_item_relations")]
+    [Description("Gets the normalized list of relationships (Parent, Child, Related, Predecessor, Successor, Tests, Tested By, Hyperlink, Attachment) associated with a work item.")]
+    public async Task<string> GetWorkItemRelations(
+        [Description("The ID of the work item to retrieve relations for")] int workItemId,
+        [Description("Optional relation type to filter by (e.g. 'Related', 'Parent', 'Child', 'Predecessor', 'Successor')")] string? relationTypeFilter = null,
+        [Description("Whether to retrieve full summaries (ID, Title, State, Type) for the target work items inline (default: false)")] bool expandTargetSummary = false,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        [Description("The Azure DevOps organization alias or URL (optional if default organization is configured)")] string? organization = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var organizationScope = _organizationContextAccessor.Use(organization);
+        if (workItemId <= 0)
+        {
+            return JsonSerializer.Serialize(new { error = "Work item ID must be a positive integer" }, JsonOptions);
+        }
+
+        var result = await _azureDevOpsService.GetWorkItemRelationsAsync(
+            workItemId, relationTypeFilter, expandTargetSummary, project, cancellationToken);
+
+        if (result is null)
+        {
+            return JsonSerializer.Serialize(new { error = $"Work item {workItemId} not found" }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
+    [McpServerTool(Name = "get_work_item_tree")]
+    [Description("Recursively gets parent and child work items starting from a root work item, up to a specified depth limit. Includes cycle detection to prevent infinite recursion on loop links.")]
+    public async Task<string> GetWorkItemTree(
+        [Description("The ID of the root work item to build the tree from")] int workItemId,
+        [Description("Maximum depth to recurse (1-5, default: 2)")] int maxDepth = 2,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        [Description("The Azure DevOps organization alias or URL (optional if default organization is configured)")] string? organization = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var organizationScope = _organizationContextAccessor.Use(organization);
+        if (workItemId <= 0)
+        {
+            return JsonSerializer.Serialize(new { error = "Work item ID must be a positive integer" }, JsonOptions);
+        }
+
+        var result = await _azureDevOpsService.GetWorkItemTreeAsync(workItemId, maxDepth, project, cancellationToken);
+        if (result is null)
+        {
+            return JsonSerializer.Serialize(new { error = $"Work item {workItemId} not found" }, JsonOptions);
+        }
+
+        return JsonSerializer.Serialize(result, JsonOptions);
     }
 
     [McpServerTool(Name = "get_recent_work_items")]

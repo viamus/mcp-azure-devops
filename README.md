@@ -142,8 +142,10 @@ This project implements an MCP server that exposes tools for querying and managi
 
 | Tool | Description |
 |------|-------------|
-| `get_work_item` | Gets details of a specific work item by ID |
-| `get_work_items` | Gets multiple work items by IDs (batch retrieval) |
+| `get_work_item` | Gets details of a specific work item by ID (supports optional `includeRelations` parameter) |
+| `get_work_items` | Gets multiple work items by IDs (batch retrieval, supports optional `includeRelations` parameter) |
+| `get_work_item_relations` | Gets the normalized list of relationships (Parent, Child, Related, Predecessor, Successor, Tests, Tested By, Hyperlink, Attachment) associated with a work item |
+| `get_work_item_tree` | Recursively gets parent and child work items starting from a root work item, up to a specified depth limit. Includes cycle detection |
 | `query_work_items` | Queries work items using WIQL (Work Item Query Language) |
 | `get_work_items_by_state` | Filters work items by state (Active, New, Closed, etc.) |
 | `get_work_items_assigned_to` | Gets work items assigned to a specific user |

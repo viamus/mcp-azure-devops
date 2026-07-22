@@ -35,7 +35,7 @@ public class WorkItemToolsTests
         };
 
         _mockService
-            .Setup(s => s.GetWorkItemAsync(123, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemAsync(123, null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItem);
 
         var result = await _tools.GetWorkItem(123);
@@ -49,7 +49,7 @@ public class WorkItemToolsTests
     public async Task GetWorkItem_WhenWorkItemNotFound_ShouldReturnError()
     {
         _mockService
-            .Setup(s => s.GetWorkItemAsync(999, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemAsync(999, null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((WorkItemDto?)null);
 
         var result = await _tools.GetWorkItem(999);
@@ -63,12 +63,12 @@ public class WorkItemToolsTests
     {
         var workItem = new WorkItemDto { Id = 123, Title = "Test" };
         _mockService
-            .Setup(s => s.GetWorkItemAsync(123, "MyProject", It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemAsync(123, "MyProject", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItem);
 
         await _tools.GetWorkItem(123, "MyProject");
 
-        _mockService.Verify(s => s.GetWorkItemAsync(123, "MyProject", It.IsAny<CancellationToken>()), Times.Once);
+        _mockService.Verify(s => s.GetWorkItemAsync(123, "MyProject", It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion
@@ -85,7 +85,7 @@ public class WorkItemToolsTests
         };
 
         _mockService
-            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(1) && ids.Contains(2)), null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(1) && ids.Contains(2)), null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItems);
 
         var result = await _tools.GetWorkItems("1,2");
@@ -131,7 +131,7 @@ public class WorkItemToolsTests
         };
 
         _mockService
-            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1 && ids.Contains(1)), null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1 && ids.Contains(1)), null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItems);
 
         var result = await _tools.GetWorkItems("1,abc,xyz");
@@ -148,12 +148,12 @@ public class WorkItemToolsTests
         };
 
         _mockService
-            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1), null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1), null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItems);
 
         var result = await _tools.GetWorkItems("1,1,1");
 
-        _mockService.Verify(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1), null, It.IsAny<CancellationToken>()), Times.Once);
+        _mockService.Verify(s => s.GetWorkItemsAsync(It.Is<IEnumerable<int>>(ids => ids.Count() == 1), null, It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class WorkItemToolsTests
         };
 
         _mockService
-            .Setup(s => s.GetWorkItemsAsync(It.IsAny<IEnumerable<int>>(), null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetWorkItemsAsync(It.IsAny<IEnumerable<int>>(), null, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(workItems);
 
         var result = await _tools.GetWorkItems(" 1 , 2 ");
@@ -1156,12 +1156,67 @@ public class WorkItemToolsTests
     }
 
     [Fact]
-    public async Task GetWorkItemsHistory_WithNoValidIds_ShouldReturnError()
+    public async Task GetWorkItemRelations_WithValidId_ShouldReturnRelations()
     {
-        var result = await _tools.GetWorkItemsHistory("abc,xyz");
+        var relationsResult = new WorkItemRelationsResultDto
+        {
+            WorkItemId = 123,
+            Count = 1,
+            Relations = new List<WorkItemRelationDto>
+            {
+                new() { RelationType = "Related", RawRel = "System.LinkTypes.Related", TargetId = 456 }
+            }
+        };
+
+        _mockService
+            .Setup(s => s.GetWorkItemRelationsAsync(123, null, false, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(relationsResult);
+
+        var result = await _tools.GetWorkItemRelations(123);
+
+        Assert.Contains("\"workItemId\": 123", result);
+        Assert.Contains("\"relationType\": \"Related\"", result);
+        Assert.Contains("\"targetId\": 456", result);
+    }
+
+    [Fact]
+    public async Task GetWorkItemRelations_WithInvalidId_ShouldReturnError()
+    {
+        var result = await _tools.GetWorkItemRelations(0);
 
         Assert.Contains("error", result);
-        Assert.Contains("No valid work item IDs provided", result);
+        Assert.Contains("must be a positive integer", result);
+    }
+
+    [Fact]
+    public async Task GetWorkItemTree_WithValidId_ShouldReturnTree()
+    {
+        var treeResult = new WorkItemTreeNodeDto
+        {
+            WorkItem = new WorkItemDto { Id = 1, Title = "Root Epic" },
+            Children = new List<WorkItemTreeNodeDto>
+            {
+                new() { WorkItem = new WorkItemDto { Id = 2, Title = "Child Feature" }, Children = [] }
+            }
+        };
+
+        _mockService
+            .Setup(s => s.GetWorkItemTreeAsync(1, 2, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(treeResult);
+
+        var result = await _tools.GetWorkItemTree(1);
+
+        Assert.Contains("\"title\": \"Root Epic\"", result);
+        Assert.Contains("\"title\": \"Child Feature\"", result);
+    }
+
+    [Fact]
+    public async Task GetWorkItemTree_WithInvalidId_ShouldReturnError()
+    {
+        var result = await _tools.GetWorkItemTree(-5);
+
+        Assert.Contains("error", result);
+        Assert.Contains("must be a positive integer", result);
     }
 
     #endregion

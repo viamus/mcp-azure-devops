@@ -217,7 +217,10 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         return uri.Host;
     }
 
-    public async Task<WorkItemDto?> GetWorkItemAsync(int workItemId, string? project = null, CancellationToken cancellationToken = default)
+    public Task<WorkItemDto?> GetWorkItemAsync(int workItemId, string? project = null, CancellationToken cancellationToken = default)
+        => GetWorkItemAsync(workItemId, project, includeRelations: false, cancellationToken);
+
+    public async Task<WorkItemDto?> GetWorkItemAsync(int workItemId, string? project = null, bool includeRelations = false, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -229,7 +232,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 expand: WorkItemExpand.All,
                 cancellationToken: cancellationToken);
 
-            return MapToDto(workItem, includeAllFields: true);
+            return MapToDto(workItem, includeAllFields: true, includeRelations: includeRelations);
         }
         catch (Exception ex)
         {
@@ -238,7 +241,10 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
     }
 
-    public async Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(IEnumerable<int> workItemIds, string? project = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(IEnumerable<int> workItemIds, string? project = null, CancellationToken cancellationToken = default)
+        => GetWorkItemsAsync(workItemIds, project, includeRelations: false, cancellationToken);
+
+    public async Task<IReadOnlyList<WorkItemDto>> GetWorkItemsAsync(IEnumerable<int> workItemIds, string? project = null, bool includeRelations = false, CancellationToken cancellationToken = default)
     {
         var ids = workItemIds.ToList();
         if (ids.Count == 0)
@@ -256,7 +262,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 expand: WorkItemExpand.All,
                 cancellationToken: cancellationToken);
 
-            return workItems.Select(wi => MapToDto(wi, includeAllFields: true)).ToList();
+            return workItems.Select(wi => MapToDto(wi, includeAllFields: true, includeRelations: includeRelations)).ToList();
         }
         catch (Exception ex)
         {
@@ -505,7 +511,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         };
     }
 
-    private static WorkItemDto MapToDto(WorkItem workItem, bool includeAllFields = false)
+    private static WorkItemDto MapToDto(WorkItem workItem, bool includeAllFields = false, bool includeRelations = false)
     {
         var fields = workItem.Fields;
 
@@ -615,9 +621,74 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             {
                 dto = dto with { LinkedPullRequests = linkedPullRequests };
             }
+
+            if (includeRelations)
+            {
+                var relationsList = new List<WorkItemRelationDto>();
+                foreach (var relation in workItem.Relations)
+                {
+                    var relType = NormalizeRelationType(relation.Rel);
+                    var targetId = ExtractTargetWorkItemId(relation.Url);
+                    string? comment = null;
+
+                    if (relation.Attributes != null && relation.Attributes.TryGetValue("comment", out var commentVal))
+                    {
+                        comment = commentVal?.ToString();
+                    }
+
+                    relationsList.Add(new WorkItemRelationDto
+                    {
+                        RelationType = relType,
+                        RawRel = relation.Rel,
+                        TargetId = targetId,
+                        TargetUrl = relation.Url,
+                        Comment = comment
+                    });
+                }
+                dto = dto with { Relations = relationsList };
+            }
         }
 
         return dto;
+    }
+
+    private static readonly Dictionary<string, string> RelationTypeMappings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["System.LinkTypes.Hierarchy-Reverse"] = "Parent",
+        ["System.LinkTypes.Hierarchy-Forward"] = "Child",
+        ["System.LinkTypes.Related"] = "Related",
+        ["System.LinkTypes.Dependency-Reverse"] = "Predecessor",
+        ["System.LinkTypes.Dependency-Forward"] = "Successor",
+        ["Microsoft.VSTS.Common.TestedBy-Forward"] = "Tested By",
+        ["Microsoft.VSTS.Common.TestedBy-Reverse"] = "Tests",
+        ["Hyperlink"] = "Hyperlink",
+        ["AttachedFile"] = "Attachment"
+    };
+
+    private static string NormalizeRelationType(string rawRel)
+    {
+        if (string.IsNullOrWhiteSpace(rawRel)) return "Unknown";
+        if (RelationTypeMappings.TryGetValue(rawRel, out var normalized))
+        {
+            return normalized;
+        }
+        var lastDot = rawRel.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < rawRel.Length - 1)
+        {
+            return rawRel[(lastDot + 1)..];
+        }
+        return rawRel;
+    }
+
+    private static int? ExtractTargetWorkItemId(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var lastSlash = url.LastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < url.Length - 1 && int.TryParse(url[(lastSlash + 1)..], out var parsedId))
+        {
+            return parsedId;
+        }
+        return null;
     }
 
     /// <summary>
@@ -1414,6 +1485,210 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             _logger.LogError(ex, "Error getting batch activity history for work items");
             throw;
         }
+    }
+
+    public async Task<WorkItemRelationsResultDto?> GetWorkItemRelationsAsync(
+        int workItemId,
+        string? relationTypeFilter = null,
+        bool expandTargetSummary = false,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Getting relations for work item {WorkItemId}", workItemId);
+
+            var workItem = await WitClient.GetWorkItemAsync(
+                project: project ?? DefaultProject,
+                id: workItemId,
+                expand: WorkItemExpand.Relations,
+                cancellationToken: cancellationToken);
+
+            if (workItem is null)
+            {
+                return null;
+            }
+
+            if (workItem.Relations is null || workItem.Relations.Count == 0)
+            {
+                return new WorkItemRelationsResultDto
+                {
+                    WorkItemId = workItemId,
+                    Count = 0,
+                    Relations = []
+                };
+            }
+
+            var relationsList = new List<WorkItemRelationDto>();
+            var targetsToFetch = new List<(WorkItemRelationDto relation, int targetId)>();
+
+            foreach (var relation in workItem.Relations)
+            {
+                var relType = NormalizeRelationType(relation.Rel);
+
+                if (!string.IsNullOrWhiteSpace(relationTypeFilter) &&
+                    !string.Equals(relType, relationTypeFilter, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var targetId = ExtractTargetWorkItemId(relation.Url);
+                string? comment = null;
+
+                if (relation.Attributes != null && relation.Attributes.TryGetValue("comment", out var commentVal))
+                {
+                    comment = commentVal?.ToString();
+                }
+
+                var relationDto = new WorkItemRelationDto
+                {
+                    RelationType = relType,
+                    RawRel = relation.Rel,
+                    TargetId = targetId,
+                    TargetUrl = relation.Url,
+                    Comment = comment
+                };
+
+                relationsList.Add(relationDto);
+
+                if (expandTargetSummary && targetId.HasValue)
+                {
+                    targetsToFetch.Add((relationDto, targetId.Value));
+                }
+            }
+
+            if (expandTargetSummary && targetsToFetch.Count > 0)
+            {
+                var targetIds = targetsToFetch.Select(t => t.targetId).Distinct().ToList();
+                var summaries = await GetWorkItemSummariesAsync(targetIds, project ?? DefaultProject, cancellationToken);
+                var summaryLookup = summaries.ToDictionary(s => s.Id);
+
+                var updatedRelations = new List<WorkItemRelationDto>();
+                foreach (var rel in relationsList)
+                {
+                    if (rel.TargetId.HasValue && summaryLookup.TryGetValue(rel.TargetId.Value, out var summary))
+                    {
+                        updatedRelations.Add(rel with { TargetSummary = summary });
+                    }
+                    else
+                    {
+                        updatedRelations.Add(rel);
+                    }
+                }
+                relationsList = updatedRelations;
+            }
+
+            return new WorkItemRelationsResultDto
+            {
+                WorkItemId = workItemId,
+                Count = relationsList.Count,
+                Relations = relationsList
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting relations for work item {WorkItemId}", workItemId);
+            throw;
+        }
+    }
+
+    public async Task<WorkItemTreeNodeDto?> GetWorkItemTreeAsync(
+        int workItemId,
+        int maxDepth = 2,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        maxDepth = Math.Clamp(maxDepth, 1, 5);
+        try
+        {
+            var rootItem = await GetWorkItemAsync(workItemId, project, includeRelations: true, cancellationToken);
+            if (rootItem is null) return null;
+
+            var visited = new HashSet<int> { workItemId };
+            return await BuildTreeNodeAsync(rootItem, 1, maxDepth, project, visited, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting work item tree for {WorkItemId}", workItemId);
+            throw;
+        }
+    }
+
+    private async Task<WorkItemTreeNodeDto> BuildTreeNodeAsync(
+        WorkItemDto workItem,
+        int currentDepth,
+        int maxDepth,
+        string? project,
+        HashSet<int> visited,
+        CancellationToken cancellationToken)
+    {
+        if (currentDepth >= maxDepth || workItem.Relations is null || workItem.Relations.Count == 0)
+        {
+            return new WorkItemTreeNodeDto
+            {
+                WorkItem = workItem,
+                Children = Array.Empty<WorkItemTreeNodeDto>()
+            };
+        }
+
+        var childRelations = workItem.Relations
+            .Where(r => string.Equals(r.RelationType, "Child", StringComparison.OrdinalIgnoreCase) && r.TargetId.HasValue)
+            .ToList();
+
+        if (childRelations.Count == 0)
+        {
+            return new WorkItemTreeNodeDto
+            {
+                WorkItem = workItem,
+                Children = Array.Empty<WorkItemTreeNodeDto>()
+            };
+        }
+
+        var childrenList = new List<WorkItemTreeNodeDto>();
+        var childIdsToFetch = new List<int>();
+
+        foreach (var rel in childRelations)
+        {
+            var childId = rel.TargetId!.Value;
+            if (!visited.Contains(childId))
+            {
+                visited.Add(childId);
+                childIdsToFetch.Add(childId);
+            }
+        }
+
+        if (childIdsToFetch.Count > 0)
+        {
+            var childrenDetails = await GetWorkItemsAsync(childIdsToFetch, project, includeRelations: true, cancellationToken);
+            var childTasks = childrenDetails.Select(childDto =>
+                BuildTreeNodeAsync(childDto, currentDepth + 1, maxDepth, project, visited, cancellationToken)
+            );
+            var resolvedChildren = await Task.WhenAll(childTasks);
+            childrenList.AddRange(resolvedChildren);
+        }
+
+        return new WorkItemTreeNodeDto
+        {
+            WorkItem = workItem,
+            Children = childrenList
+        };
+    }
+
+    private async Task<IReadOnlyList<WorkItemSummaryDto>> GetWorkItemSummariesAsync(
+        IEnumerable<int> ids,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        var idList = ids.ToList();
+        if (idList.Count == 0) return Array.Empty<WorkItemSummaryDto>();
+
+        var workItems = await WitClient.GetWorkItemsAsync(
+            project: project ?? DefaultProject,
+            ids: idList,
+            fields: SummaryFields,
+            cancellationToken: cancellationToken);
+
+        return workItems.Select(MapToSummaryDto).ToList();
     }
 
     #region Git Operations
