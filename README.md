@@ -319,6 +319,48 @@ Then run the executable directly:
 
 ---
 
+### Option 4: .NET STDIO
+
+Best for: MCP clients that launch a local process and communicate over stdin/stdout.
+
+The STDIO host uses the same tools, organization/PAT configuration, and error handling as the HTTP server. It does not open a listening port. Build a framework-dependent distribution with the .NET 10 SDK:
+
+```bash
+dotnet publish src/Viamus.Azure.Devops.Mcp.Stdio -c Release --self-contained false -o ./publish/stdio
+```
+
+Then configure your MCP client's process command. Use an absolute path to the published DLL:
+
+```json
+{
+  "mcpServers": {
+    "azure-devops": {
+      "command": "dotnet",
+      "args": ["C:/path/to/mcp-azure-devops/publish/stdio/Viamus.Azure.Devops.Mcp.Stdio.dll"],
+      "env": {
+        "AzureDevOps__OrganizationUrl": "https://dev.azure.com/your-organization",
+        "AzureDevOps__PersonalAccessToken": "your-pat",
+        "AzureDevOps__DefaultProject": "your-project"
+      }
+    }
+  }
+}
+```
+
+Configuration is loaded from `appsettings.json` beside the executable, with environment variables and command-line settings taking precedence. The client's working directory can be different. Multi-organization settings use the same keys as HTTP, for example `AzureDevOps__Organizations__0__Name` and `AzureDevOps__Organizations__0__PersonalAccessToken`. A `.env` file is not loaded automatically by the .NET hosts; inject those values through the client or its environment.
+
+All runtime logs go to stderr; stdout is reserved for MCP JSON-RPC messages. Publish/build separately before connecting a client so build output cannot enter the protocol stream. Missing or invalid configuration produces a sanitized startup message on stderr and a nonzero exit code. A stale PAT does not prevent initialization or tool discovery; authentication is attempted when a tool needs Azure DevOps.
+
+For a standalone executable that includes the .NET runtime:
+
+```bash
+dotnet publish src/Viamus.Azure.Devops.Mcp.Stdio -c Release -r win-x64 --self-contained true -o ./publish/stdio-win-x64
+```
+
+Set the client's `command` to the absolute path of `Viamus.Azure.Devops.Mcp.Stdio.exe` and omit `args`.
+
+---
+
 ## Security
 
 ### API Key Authentication
@@ -456,6 +498,38 @@ After configuring the MCP client, you can ask questions like:
 
 ## Troubleshooting
 
+### Tool error responses
+
+Both transports report failed tool execution with MCP `isError: true`. Azure DevOps exceptions produce a JSON text content block with stable fields:
+
+```json
+{
+  "error": "Azure DevOps authentication failed. The PAT may be expired, revoked, or invalid. Replace the PAT for the selected organization, check access, and restart the host if configuration changed.",
+  "errorCode": "AZURE_DEVOPS_AUTHENTICATION_FAILED",
+  "retryable": false,
+  "httpStatusCode": 401
+}
+```
+
+| Error code | Meaning / action |
+|------------|------------------|
+| `AZURE_DEVOPS_AUTHENTICATION_FAILED` | Check or replace the selected organization's PAT, then restart the process |
+| `AZURE_DEVOPS_FORBIDDEN` | Check PAT scopes and organization/project permissions |
+| `AZURE_DEVOPS_NOT_FOUND` | Verify the requested resource, project, and organization |
+| `INVALID_ARGUMENT` | Correct the tool arguments |
+| `AZURE_DEVOPS_CONFLICT` | Refresh the resource and resolve conflicting changes |
+| `AZURE_DEVOPS_RATE_LIMITED` | Wait before attempting another call |
+| `AZURE_DEVOPS_UNAVAILABLE` | Azure DevOps returned a server error; try again later |
+| `AZURE_DEVOPS_API_UNAVAILABLE` | Check the organization URL and whether the server supports the required API |
+| `AZURE_DEVOPS_TIMEOUT` | The operation timed out |
+| `AZURE_DEVOPS_NETWORK_ERROR` | Check connectivity, organization URL, and proxy settings |
+| `CONFIGURATION_ERROR` | Correct the organization configuration or selector |
+| `UNEXPECTED_ERROR` | An unexpected failure occurred; inspect the server's sanitized diagnostic logs |
+
+`httpStatusCode` can be null when no HTTP response was available. `retryable` identifies transient failures; the server does not automatically repeat tool calls. Client-requested cancellation remains cancellation. Existing validation and missing-resource JSON responses retain their messages, add the error metadata, and now also set MCP `isError: true`.
+
+A 401 response cannot establish whether a PAT expired, was revoked, or is invalid. The message lists those possibilities rather than asserting expiration; see [Microsoft's PAT guidance](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops). Raw exception messages, credentials, and stack traces are excluded from the new error responses. Wiki lookups return an empty/not-found result only when the requested resource returns HTTP 404. API discovery, authentication, and connectivity failures reach the error handler.
+
 ### Common Issues
 
 <details>
@@ -540,37 +614,38 @@ curl -H "X-API-Key: your-key" http://localhost:5000
 ```
 mcp-azure-devops/
 ├── src/
-│   └── Viamus.Azure.Devops.Mcp.Server/
-│       ├── Configuration/      # App configuration classes
-│       ├── Middleware/         # HTTP middleware (authentication, etc.)
-│       ├── Models/             # DTOs and data models
-│       │   ├── WorkItemDto.cs          # Work item models
-│       │   ├── RepositoryDto.cs        # Git repository models
-│       │   ├── PullRequestDto.cs       # Pull request models
-│       │   └── PipelineDto.cs          # Pipeline/build models
-│       ├── Services/           # Azure DevOps SDK integration
-│       ├── Tools/              # MCP tool implementations
-│       │   ├── WorkItemTools.cs        # Work item operations
-│       │   ├── GitTools.cs             # Git repository operations
-│       │   ├── PullRequestTools.cs     # Pull request operations
-│       │   └── PipelineTools.cs        # Pipeline/build operations
-│       ├── Program.cs          # Entry point
-│       ├── appsettings.json    # App settings
-│       └── Dockerfile          # Container definition
-├── tests/
-│   └── Viamus.Azure.Devops.Mcp.Server.Tests/
-│       ├── Configuration/      # Configuration tests
-│       ├── Middleware/         # Middleware tests
-│       ├── Models/             # DTO tests
-│       └── Tools/              # Tool behavior tests
-├── .github/                    # GitHub templates and workflows
-├── .env.example                # Environment variable template (copy to .env)
-├── docker-compose.yml          # Docker orchestration
-├── install-mcp-azure-devops.ps1 # Windows automated installer
-├── CONTRIBUTING.md             # Contributor guide
-├── CODE_OF_CONDUCT.md          # Community guidelines
-├── SECURITY.md                 # Security policy
-└── LICENSE                     # MIT License
+│   ├── Viamus.Azure.Devops.Mcp.Core/
+│   │   ├── Configuration/      # Shared Azure DevOps options and safe validation
+│   │   ├── Errors/             # Error classification and MCP tool error handling
+│   │   ├── Models/             # Shared DTOs
+│   │   ├── Services/           # Azure DevOps SDK integration
+│   │   └── Tools/              # Work Items, Git, PRs, builds, Wiki
+│   ├── Viamus.Azure.Devops.Mcp.Server/
+│   │   ├── Configuration/      # HTTP security options
+│   │   ├── Middleware/         # API key authentication
+│   │   ├── Program.cs          # HTTP entry point
+│   │   ├── appsettings.json
+│   │   └── Dockerfile
+│   └── Viamus.Azure.Devops.Mcp.Stdio/
+│       ├── Program.cs          # STDIO entry point
+│       ├── StdioHost.cs         # Host setup, executable-relative config, stderr logs
+│       └── appsettings.json
+├── tests/Viamus.Azure.Devops.Mcp.Server.Tests/
+│   ├── Configuration/
+│   ├── Errors/
+│   ├── Middleware/
+│   ├── Models/
+│   ├── Services/
+│   ├── Tools/
+│   └── Transport/              # Local HTTP/STDIO protocol integration tests
+├── .github/
+├── .env.example
+├── docker-compose.yml
+├── install-mcp-azure-devops.ps1
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+└── LICENSE
 ```
 
 ## API Reference

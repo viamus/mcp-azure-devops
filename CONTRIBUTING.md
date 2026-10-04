@@ -226,7 +226,7 @@ Before creating a new tool, ensure it has:
 
 ### Steps
 
-1. **Add tool implementation** in `src/.../Tools/`
+1. **Add tool implementation** in `src/Viamus.Azure.Devops.Mcp.Core/Tools/`
 
 ```csharp
 [McpServerToolType]
@@ -253,11 +253,11 @@ public sealed class MyTools
 }
 ```
 
-2. **Add service method** in `src/.../Services/`
+2. **Add service method** in `src/Viamus.Azure.Devops.Mcp.Core/Services/`
    - Add signature to `IAzureDevOpsService.cs`
    - Implement in `AzureDevOpsService.cs`
 
-3. **Add DTOs if needed** in `src/.../Models/`
+3. **Add DTOs if needed** in `src/Viamus.Azure.Devops.Mcp.Core/Models/`
    - Use `sealed record` for immutability
    - Include XML documentation
 
@@ -265,7 +265,7 @@ public sealed class MyTools
 
 5. **Update README.md** with the new tool
 
-> Tools are auto-registered via `.WithToolsFromAssembly()`
+> Both hosts discover tools in the shared Core assembly through `AddAzureDevOpsMcp`. Tool failures are handled centrally; keep new tools in Core so HTTP and STDIO expose the same catalog.
 
 ---
 
@@ -274,36 +274,20 @@ public sealed class MyTools
 ### Project Structure
 
 ```
-src/Viamus.Azure.Devops.Mcp.Server/
-├── Configuration/
-│   └── AzureDevOpsOptions.cs        # Configuration binding
-├── Models/
-│   ├── WorkItemDto.cs               # Work item details
-│   ├── WorkItemSummaryDto.cs        # Work item list view
-│   ├── WorkItemCommentDto.cs        # Work item comment
-│   ├── RepositoryDto.cs             # Git repository
-│   ├── BranchDto.cs                 # Git branch
-│   ├── GitItemDto.cs                # Git file/folder
-│   ├── GitFileContentDto.cs         # File content
-│   ├── PullRequestDto.cs            # Pull request details
-│   ├── PullRequestReviewerDto.cs    # PR reviewer
-│   ├── PullRequestThreadDto.cs      # PR comment thread
-│   ├── PullRequestCommentDto.cs     # PR comment
-│   ├── PipelineDto.cs               # Pipeline definition
-│   ├── BuildDto.cs                  # Build details
-│   ├── BuildLogDto.cs               # Build log metadata
-│   ├── BuildTimelineRecordDto.cs    # Build timeline
-│   ├── PipelineRunDto.cs            # Pipeline run
-│   └── PaginatedResult.cs           # Generic pagination
-├── Services/
-│   ├── IAzureDevOpsService.cs       # Service interface
-│   └── AzureDevOpsService.cs        # Implementation
-├── Tools/
-│   ├── WorkItemTools.cs             # Work Item tools (11)
-│   ├── GitTools.cs                  # Git Repository tools (6)
-│   ├── PullRequestTools.cs          # Pull Request tools (5)
-│   └── PipelineTools.cs             # Pipeline/Build tools (9)
-└── Program.cs                       # Entry point & DI
+src/
+├── Viamus.Azure.Devops.Mcp.Core/
+│   ├── Configuration/  # Azure DevOps options and safe validation
+│   ├── Errors/         # Centralized MCP error handling
+│   ├── Models/         # Shared DTOs
+│   ├── Services/       # Azure DevOps clients and operations
+│   └── Tools/          # Transport-independent MCP tools
+├── Viamus.Azure.Devops.Mcp.Server/
+│   ├── Configuration/  # HTTP security options
+│   ├── Middleware/     # API key authentication
+│   └── Program.cs      # HTTP host
+└── Viamus.Azure.Devops.Mcp.Stdio/
+    ├── Program.cs      # STDIO host
+    └── StdioHost.cs    # Configuration and stderr logging
 ```
 
 ### Key Patterns

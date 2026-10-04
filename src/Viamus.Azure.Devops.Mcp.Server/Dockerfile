@@ -10,6 +10,7 @@ EXPOSE 8080
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+COPY ["src/Viamus.Azure.Devops.Mcp.Core/Viamus.Azure.Devops.Mcp.Core.csproj", "src/Viamus.Azure.Devops.Mcp.Core/"]
 COPY ["src/Viamus.Azure.Devops.Mcp.Server/Viamus.Azure.Devops.Mcp.Server.csproj", "src/Viamus.Azure.Devops.Mcp.Server/"]
 RUN dotnet restore "./src/Viamus.Azure.Devops.Mcp.Server/Viamus.Azure.Devops.Mcp.Server.csproj"
 COPY . .

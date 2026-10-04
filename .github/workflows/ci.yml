@@ -30,6 +30,9 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
+      - name: Publish STDIO host
+        run: dotnet publish src/Viamus.Azure.Devops.Mcp.Stdio -c Release --no-restore --self-contained false -o ./artifacts/stdio
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         if: always()
