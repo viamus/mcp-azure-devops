@@ -71,18 +71,20 @@ public sealed record WorkItemHistoryResult(
 
 ## 2. File Modification Plan
 
-### 1. `src/Viamus.Azure.Devops.Mcp.Server/Models/WorkItemHistoryModels.cs` [NEW]
+This section preserves the original design plan and proposed filenames. The shared implementation now lives in Core; the current history models are in [WorkItemHistoryDto.cs](../src/Viamus.Azure.Devops.Mcp.Core/Models/WorkItemHistoryDto.cs), and tool tests are in [Tools/WorkItemToolsTests.cs](../tests/Viamus.Azure.Devops.Mcp.Server.Tests/Tools/WorkItemToolsTests.cs).
+
+### 1. `src/Viamus.Azure.Devops.Mcp.Core/Models/WorkItemHistoryModels.cs` [NEW]
 - Defines `WorkItemStateTransition` and `WorkItemHistoryResult` record classes.
 
-### 2. `src/Viamus.Azure.Devops.Mcp.Server/Services/IAzureDevOpsService.cs` [MODIFY]
+### 2. `src/Viamus.Azure.Devops.Mcp.Core/Services/IAzureDevOpsService.cs` [MODIFY]
 - Add `GetWorkItemHistoryAsync(int workItemId, string? project, CancellationToken cancellationToken)`
 - Add `GetWorkItemsHistoryAsync(IEnumerable<int> workItemIds, string? project, CancellationToken cancellationToken)`
 
-### 3. `src/Viamus.Azure.Devops.Mcp.Server/Services/AzureDevOpsService.cs` [MODIFY]
+### 3. `src/Viamus.Azure.Devops.Mcp.Core/Services/AzureDevOpsService.cs` [MODIFY]
 - Implement `GetWorkItemHistoryAsync` by issuing GET request to `_apis/wit/workItems/{id}/updates`.
 - Implement `GetWorkItemsHistoryAsync` using `Task.WhenAll` and `SemaphoreSlim(10)`.
 
-### 4. `src/Viamus.Azure.Devops.Mcp.Server/Tools/WorkItemTools.cs` [MODIFY]
+### 4. `src/Viamus.Azure.Devops.Mcp.Core/Tools/WorkItemTools.cs` [MODIFY]
 - Register `[McpServerTool(Name = "get_work_item_history")]`
 - Register `[McpServerTool(Name = "get_work_items_history")]`
 

@@ -2,18 +2,16 @@
 
 ## Supported Versions
 
-This project is currently in its **initial public release (v1.0)**.
-
-At this stage:
+Security support follows the latest released version:
 
 - Only the **latest released version** is supported for security fixes.
 - No long-term support (LTS) versions are available yet.
 - Security fixes will be applied to the `main` branch and released as patch versions when applicable.
 
 | Version | Supported |
-|--------|-----------|
-| v1.x   | ✅ Yes    |
-| < v1.0 | ❌ No    |
+|---------|-----------|
+| Latest released version | Yes |
+| Older releases | No |
 
 ---
 
@@ -40,12 +38,12 @@ Please include as much detail as possible to help us understand and reproduce th
 
 The security policy applies to:
 
-- The MCP Azure DevOps Server codebase
-- MCP tools exposed by the server
-- Configuration handling (environment variables, secrets)
-- HTTP endpoints exposed by the server
+- The shared Core assembly and both HTTP and STDIO host codebases
+- MCP tools exposed by either transport
+- Configuration handling (environment variables, settings files, credentials)
+- HTTP endpoints and STDIO protocol/process handling
 
-Out of scope (for v1.0):
+Out of scope:
 
 - Third-party services (Azure DevOps, Docker, MCP clients)
 - Misconfigured client environments
@@ -54,16 +52,18 @@ Out of scope (for v1.0):
 
 ---
 
-## Security Considerations (v1.0)
+## Security Considerations
 
-As an early-stage project, the following considerations apply:
+- Both hosts authenticate Azure DevOps operations using **Personal Access Tokens (PATs)**; use HTTPS organization URLs for the upstream credential connection.
+- Work item tools support reads and writes. Git file browsing and Wiki tools are read-only, while pull request tools can create/update PRs, threads, and comments. Access is governed by the PAT and the user's Azure DevOps permissions.
+- Git files, work item attachments, Wiki pages, and build logs may expose sensitive content to an authorized MCP client.
+- Credentials can be supplied through environment variables, settings files, or MCP client process configuration. These files can persist secrets; keep real credentials outside version control and restrict access to private configuration.
+- HTTP API key authentication is optional and disabled by default. When enabled, it accepts `X-API-Key` or `Authorization: Bearer`, while `/health` remains accessible. This API key is separate from the Azure DevOps PAT.
+- STDIO has no network listener and does not use HTTP API keys. Secure access to the local account, process environment, and MCP client configuration.
+- The shared tool error handler excludes raw exception text, credentials, and stack traces from classified error responses. Its diagnostic logs record tool name, exception type, and error code; upstream resource content can still contain sensitive information.
+- Initialization, tool discovery, and HTTP health checks do not validate PAT access. Diagnose authentication and permissions using an actual Azure DevOps operation.
 
-- Authentication is based on **Azure DevOps Personal Access Tokens (PAT)**
-- The server provides **read-only access** to Git Repositories and **read-write access** to Work Items
-- Git file content retrieval may expose sensitive data if repositories contain secrets
-- No secrets are persisted; all credentials are provided via environment variables
-- Users are responsible for securing their runtime environment
-- Logging avoids sensitive data by design, but misconfiguration may expose information
+See the [STDIO and error handling guide](docs/stdio-and-error-handling.md) for configuration and PAT replacement steps.
 
 ---
 
@@ -96,11 +96,14 @@ We follow a **responsible disclosure** approach:
 For users running this server in production-like environments:
 
 - Use **minimal-scope PATs**:
-  - Work Items: Read (or Read & Write if comments are needed)
-  - Code: Read (for Git repository access)
-- Never commit `.env` files or secrets
-- Be aware that Git file content retrieval may expose sensitive files in repositories
-- Restrict network access to the MCP server
+  - Work Items: Read for queries/history/attachments, or Read & Write for creation, updates, comments, and relation linking
+  - Code: Read for Git queries, or Read & Write for pull request mutations
+  - Wiki: Read (`vso.wiki`) for Wiki metadata and pages; see the [Wiki API scope reference](https://learn.microsoft.com/en-us/rest/api/azure/devops/wiki/wikis/list?view=azure-devops-rest-7.1#security)
+  - Build: Read for pipelines and builds
+- Never commit `.env` files, credential-bearing settings, or MCP client secrets
+- Be aware that tools may return sensitive resource content to MCP clients
+- For HTTP, restrict network access and configure TLS and API key authentication as appropriate for the deployment
+- For STDIO, restrict access to the host process and its private configuration; keep runtime logs on stderr and protocol messages on stdout
 - Monitor logs and usage patterns
 - Rotate PATs periodically
 

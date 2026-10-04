@@ -9,6 +9,7 @@ using Microsoft.VisualStudio.Services.WebApi;
 using Microsoft.VisualStudio.Services.WebApi.Patch;
 using Microsoft.VisualStudio.Services.WebApi.Patch.Json;
 using Viamus.Azure.Devops.Mcp.Server.Configuration;
+using Viamus.Azure.Devops.Mcp.Core.Errors;
 using Viamus.Azure.Devops.Mcp.Server.Models;
 
 namespace Viamus.Azure.Devops.Mcp.Server.Services;
@@ -25,10 +26,14 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
     private readonly AzureDevOpsOrganizationContext _defaultOrganizationContext;
     private bool _disposed;
 
-    private WorkItemTrackingHttpClient WitClient => GetOrganizationContext().WitClient;
-    private GitHttpClient GitClient => GetOrganizationContext().GitClient;
-    private BuildHttpClient BuildClient => GetOrganizationContext().BuildClient;
-    private WikiHttpClient WikiClient => GetOrganizationContext().WikiClient;
+    private Task<WorkItemTrackingHttpClient> GetWitClientAsync(CancellationToken cancellationToken) =>
+        GetOrganizationContext().Connection.GetClientAsync<WorkItemTrackingHttpClient>(cancellationToken);
+    private Task<GitHttpClient> GetGitClientAsync(CancellationToken cancellationToken) =>
+        GetOrganizationContext().Connection.GetClientAsync<GitHttpClient>(cancellationToken);
+    private Task<BuildHttpClient> GetBuildClientAsync(CancellationToken cancellationToken) =>
+        GetOrganizationContext().Connection.GetClientAsync<BuildHttpClient>(cancellationToken);
+    private Task<WikiHttpClient> GetWikiClientAsync(CancellationToken cancellationToken) =>
+        GetOrganizationContext().Connection.GetClientAsync<WikiHttpClient>(cancellationToken);
     private string? DefaultProject => GetOrganizationContext().DefaultProject;
     private string OrganizationUrl => GetOrganizationContext().OrganizationUrl;
 
@@ -74,6 +79,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         IAzureDevOpsOrganizationContextAccessor organizationContextAccessor)
     {
         _options = options.Value;
+        var validationErrors = AzureDevOpsConfigurationValidator.Validate(_options);
+        if (validationErrors.Count > 0) throw new AzureDevOpsConfigurationException(validationErrors);
         _logger = logger;
         _organizationContextAccessor = organizationContextAccessor;
 
@@ -83,7 +90,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
         if (contexts.Count == 0)
         {
-            throw new InvalidOperationException("At least one Azure DevOps organization must be configured.");
+            throw new AzureDevOpsConfigurationException(["At least one Azure DevOps organization must be configured."]);
         }
 
         var lookup = new Dictionary<string, AzureDevOpsOrganizationContext>(StringComparer.OrdinalIgnoreCase);
@@ -122,8 +129,8 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             return context;
         }
 
-        throw new InvalidOperationException(
-            $"Azure DevOps organization '{organization}' is not configured. Configure it under AzureDevOps:Organizations or use the default organization.");
+        throw new AzureDevOpsConfigurationException(
+            ["The requested Azure DevOps organization is not configured. Configure it under AzureDevOps:Organizations or use the default organization."]);
     }
 
     private AzureDevOpsOrganizationContext ResolveDefaultOrganization(IReadOnlyList<AzureDevOpsOrganizationContext> contexts)
@@ -139,16 +146,16 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             return context;
         }
 
-        throw new InvalidOperationException(
-            $"AzureDevOps:DefaultOrganization '{_options.DefaultOrganization}' does not match any configured organization.");
+        throw new AzureDevOpsConfigurationException(
+            ["AzureDevOps:DefaultOrganization does not match any configured organization."]);
     }
 
     private static AzureDevOpsOrganizationContext CreateOrganizationContext(AzureDevOpsOrganizationOptions organization)
     {
         var organizationUrl = organization.OrganizationUrl?.Trim()
-            ?? throw new InvalidOperationException("Azure DevOps organization URL is required.");
+            ?? throw new AzureDevOpsConfigurationException(["Azure DevOps organization URL is required."]);
         var personalAccessToken = organization.PersonalAccessToken
-            ?? throw new InvalidOperationException($"Azure DevOps organization '{organizationUrl}' requires a PAT.");
+            ?? throw new AzureDevOpsConfigurationException(["The Azure DevOps organization requires a PAT."]);
         var organizationName = string.IsNullOrWhiteSpace(organization.Name)
             ? GetOrganizationNameFromUrl(organizationUrl) ?? organizationUrl
             : organization.Name.Trim();
@@ -163,11 +170,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             DefaultProject = string.IsNullOrWhiteSpace(organization.DefaultProject)
                 ? null
                 : organization.DefaultProject.Trim(),
-            Connection = connection,
-            WitClient = connection.GetClient<WorkItemTrackingHttpClient>(),
-            GitClient = connection.GetClient<GitHttpClient>(),
-            BuildClient = connection.GetClient<BuildHttpClient>(),
-            WikiClient = connection.GetClient<WikiHttpClient>()
+            Connection = connection
         };
     }
 
@@ -184,7 +187,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         var normalizedKey = NormalizeOrganizationKey(key);
         if (lookup.TryGetValue(normalizedKey, out var existing) && !ReferenceEquals(existing, context))
         {
-            throw new InvalidOperationException($"Duplicate Azure DevOps organization key '{key}'.");
+            throw new AzureDevOpsConfigurationException(["Azure DevOps organization aliases and URLs must be unique."]);
         }
 
         lookup[normalizedKey] = context;
@@ -226,7 +229,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         {
             _logger.LogDebug("Getting work item {WorkItemId}", workItemId);
 
-            var workItem = await WitClient.GetWorkItemAsync(
+            var workItem = await (await GetWitClientAsync(cancellationToken)).GetWorkItemAsync(
                 project: project ?? DefaultProject,
                 id: workItemId,
                 expand: WorkItemExpand.All,
@@ -236,7 +239,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -256,7 +259,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         {
             _logger.LogDebug("Getting {Count} work items", ids.Count);
 
-            var workItems = await WitClient.GetWorkItemsAsync(
+            var workItems = await (await GetWitClientAsync(cancellationToken)).GetWorkItemsAsync(
                 project: project ?? DefaultProject,
                 ids: ids,
                 expand: WorkItemExpand.All,
@@ -266,7 +269,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting work items");
+            LogOperationError(ex, "Error getting work items");
             throw;
         }
     }
@@ -278,7 +281,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             _logger.LogDebug("Executing WIQL query");
 
             var wiql = new Wiql { Query = wiqlQuery };
-            var queryResult = await WitClient.QueryByWiqlAsync(
+            var queryResult = await (await GetWitClientAsync(cancellationToken)).QueryByWiqlAsync(
                 wiql: wiql,
                 project: project ?? DefaultProject,
                 top: top,
@@ -306,7 +309,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing WIQL query");
+            LogOperationError(ex, "Error executing WIQL query");
             throw;
         }
     }
@@ -326,7 +329,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             _logger.LogDebug("Getting child work items for parent {ParentWorkItemId}", parentWorkItemId);
 
             var wiql = new Wiql { Query = wiqlQuery };
-            var queryResult = await WitClient.QueryByWiqlAsync(
+            var queryResult = await (await GetWitClientAsync(cancellationToken)).QueryByWiqlAsync(
                 wiql: wiql,
                 project: projectName,
                 cancellationToken: cancellationToken);
@@ -351,7 +354,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting child work items for parent {ParentWorkItemId}", parentWorkItemId);
+            LogOperationError(ex, "Error getting child work items for parent {ParentWorkItemId}", parentWorkItemId);
             throw;
         }
     }
@@ -396,7 +399,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 });
             }
 
-            var result = await WitClient.UpdateWorkItemAsync(
+            var result = await (await GetWitClientAsync(cancellationToken)).UpdateWorkItemAsync(
                 document: patchDocument,
                 id: sourceWorkItemId,
                 project: project ?? DefaultProject,
@@ -406,8 +409,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
+            LogOperationError(ex,
                 "Error linking work item {SourceWorkItemId} with relation {RelationType}",
                 sourceWorkItemId,
                 relationType);
@@ -432,7 +434,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var wiql = new Wiql { Query = wiqlQuery };
 
             // First, get all matching IDs to determine total count
-            var queryResult = await WitClient.QueryByWiqlAsync(
+            var queryResult = await (await GetWitClientAsync(cancellationToken)).QueryByWiqlAsync(
                 wiql: wiql,
                 project: project ?? DefaultProject,
                 cancellationToken: cancellationToken);
@@ -469,7 +471,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             }
 
             // Fetch only summary fields for the page items
-            var workItems = await WitClient.GetWorkItemsAsync(
+            var workItems = await (await GetWitClientAsync(cancellationToken)).GetWorkItemsAsync(
                 project: project ?? DefaultProject,
                 ids: pageIds,
                 fields: SummaryFields,
@@ -487,7 +489,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing paginated WIQL query");
+            LogOperationError(ex, "Error executing paginated WIQL query");
             throw;
         }
     }
@@ -762,7 +764,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             var request = new CommentCreate { Text = comment };
 
-            var createdComment = await WitClient.AddCommentAsync(
+            var createdComment = await (await GetWitClientAsync(cancellationToken)).AddCommentAsync(
                 request: request,
                 project: projectName,
                 workItemId: workItemId,
@@ -772,7 +774,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error adding comment to work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error adding comment to work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -801,7 +803,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
             CommentExpandOptions? expand = includeRenderedText ? CommentExpandOptions.RenderedText : null;
 
-            var list = await WitClient.GetCommentsAsync(
+            var list = await (await GetWitClientAsync(cancellationToken)).GetCommentsAsync(
                 project: project ?? DefaultProject,
                 workItemId: workItemId,
                 top: top,
@@ -826,7 +828,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting comments for work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting comments for work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -855,7 +857,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         {
             _logger.LogDebug("Getting attachments for work item {WorkItemId}", workItemId);
 
-            var workItem = await WitClient.GetWorkItemAsync(
+            var workItem = await (await GetWitClientAsync(cancellationToken)).GetWorkItemAsync(
                 project: project ?? DefaultProject,
                 id: workItemId,
                 expand: WorkItemExpand.Relations,
@@ -882,7 +884,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting attachments for work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting attachments for work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -898,7 +900,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         {
             _logger.LogDebug("Downloading attachment {AttachmentId}", attachmentId);
 
-            using var stream = await WitClient.GetAttachmentContentAsync(
+            using var stream = await (await GetWitClientAsync(cancellationToken)).GetAttachmentContentAsync(
                 project: project ?? DefaultProject,
                 id: attachmentId,
                 cancellationToken: cancellationToken);
@@ -923,7 +925,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading attachment {AttachmentId}", attachmentId);
+            LogOperationError(ex, "Error downloading attachment {AttachmentId}", attachmentId);
             throw;
         }
     }
@@ -945,7 +947,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             total += read;
             if (total > maxBytes)
             {
-                throw new InvalidOperationException(
+                throw new ArgumentException(
                     $"Attachment exceeds the {maxBytes:N0}-byte limit. Use the URL from get_work_item_attachments to download it directly.");
             }
 
@@ -1174,7 +1176,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 }
             }
 
-            var result = await WitClient.CreateWorkItemAsync(
+            var result = await (await GetWitClientAsync(cancellationToken)).CreateWorkItemAsync(
                 document: patchDocument,
                 project: project,
                 type: workItemType,
@@ -1184,7 +1186,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating work item of type {WorkItemType} in project {Project}", workItemType, project);
+            LogOperationError(ex, "Error creating work item of type {WorkItemType} in project {Project}", workItemType, project);
             throw;
         }
     }
@@ -1313,7 +1315,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 return currentWorkItem!;
             }
 
-            var result = await WitClient.UpdateWorkItemAsync(
+            var result = await (await GetWitClientAsync(cancellationToken)).UpdateWorkItemAsync(
                 document: patchDocument,
                 id: workItemId,
                 project: project ?? DefaultProject,
@@ -1323,7 +1325,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error updating work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -1338,7 +1340,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             _logger.LogDebug("Getting activity history for work item {WorkItemId}", workItemId);
 
             var projectName = project ?? DefaultProject;
-            var updates = await WitClient.GetUpdatesAsync(
+            var updates = await (await GetWitClientAsync(cancellationToken)).GetUpdatesAsync(
                 project: projectName,
                 id: workItemId,
                 cancellationToken: cancellationToken);
@@ -1443,7 +1445,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting activity history for work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting activity history for work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -1482,7 +1484,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting batch activity history for work items");
+            LogOperationError(ex, "Error getting batch activity history for work items");
             throw;
         }
     }
@@ -1498,7 +1500,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         {
             _logger.LogDebug("Getting relations for work item {WorkItemId}", workItemId);
 
-            var workItem = await WitClient.GetWorkItemAsync(
+            var workItem = await (await GetWitClientAsync(cancellationToken)).GetWorkItemAsync(
                 project: project ?? DefaultProject,
                 id: workItemId,
                 expand: WorkItemExpand.Relations,
@@ -1587,7 +1589,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting relations for work item {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting relations for work item {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -1609,7 +1611,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting work item tree for {WorkItemId}", workItemId);
+            LogOperationError(ex, "Error getting work item tree for {WorkItemId}", workItemId);
             throw;
         }
     }
@@ -1682,7 +1684,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         var idList = ids.ToList();
         if (idList.Count == 0) return Array.Empty<WorkItemSummaryDto>();
 
-        var workItems = await WitClient.GetWorkItemsAsync(
+        var workItems = await (await GetWitClientAsync(cancellationToken)).GetWorkItemsAsync(
             project: project ?? DefaultProject,
             ids: idList,
             fields: SummaryFields,
@@ -1700,7 +1702,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting repositories for project {Project}", projectName);
 
-            var repositories = await GitClient.GetRepositoriesAsync(
+            var repositories = await (await GetGitClientAsync(cancellationToken)).GetRepositoriesAsync(
                 project: projectName,
                 cancellationToken: cancellationToken);
 
@@ -1708,7 +1710,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting repositories");
+            LogOperationError(ex, "Error getting repositories");
             throw;
         }
     }
@@ -1720,7 +1722,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting repository {Repository} for project {Project}", repositoryNameOrId, projectName);
 
-            var repository = await GitClient.GetRepositoryAsync(
+            var repository = await (await GetGitClientAsync(cancellationToken)).GetRepositoryAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 cancellationToken: cancellationToken);
@@ -1729,7 +1731,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting repository {Repository}", repositoryNameOrId);
+            LogOperationError(ex, "Error getting repository {Repository}", repositoryNameOrId);
             throw;
         }
     }
@@ -1741,7 +1743,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting branches for repository {Repository}", repositoryNameOrId);
 
-            var branches = await GitClient.GetBranchesAsync(
+            var branches = await (await GetGitClientAsync(cancellationToken)).GetBranchesAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 cancellationToken: cancellationToken);
@@ -1750,7 +1752,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting branches for repository {Repository}", repositoryNameOrId);
+            LogOperationError(ex, "Error getting branches for repository {Repository}", repositoryNameOrId);
             throw;
         }
     }
@@ -1783,7 +1785,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 _ => VersionControlRecursionType.OneLevel
             };
 
-            var items = await GitClient.GetItemsAsync(
+            var items = await (await GetGitClientAsync(cancellationToken)).GetItemsAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 scopePath: path,
@@ -1795,7 +1797,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting items at path {Path} in repository {Repository}", path, repositoryNameOrId);
+            LogOperationError(ex, "Error getting items at path {Path} in repository {Repository}", path, repositoryNameOrId);
             throw;
         }
     }
@@ -1821,7 +1823,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 };
 
             // First get the item metadata
-            var item = await GitClient.GetItemAsync(
+            var item = await (await GetGitClientAsync(cancellationToken)).GetItemAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 path: filePath,
@@ -1848,7 +1850,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             }
 
             // Get the content stream
-            using var contentStream = await GitClient.GetItemContentAsync(
+            using var contentStream = await (await GetGitClientAsync(cancellationToken)).GetItemContentAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 path: filePath,
@@ -1874,7 +1876,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting file content at path {Path} in repository {Repository}", filePath, repositoryNameOrId);
+            LogOperationError(ex, "Error getting file content at path {Path} in repository {Repository}", filePath, repositoryNameOrId);
             throw;
         }
     }
@@ -1953,7 +1955,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 TargetRefName = targetRefName
             };
 
-            var pullRequests = await GitClient.GetPullRequestsAsync(
+            var pullRequests = await (await GetGitClientAsync(cancellationToken)).GetPullRequestsAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 searchCriteria: searchCriteria,
@@ -1965,7 +1967,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pull requests for repository {Repository}", repositoryNameOrId);
+            LogOperationError(ex, "Error getting pull requests for repository {Repository}", repositoryNameOrId);
             throw;
         }
     }
@@ -1981,7 +1983,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
 
-            var pullRequest = await GitClient.GetPullRequestAsync(
+            var pullRequest = await (await GetGitClientAsync(cancellationToken)).GetPullRequestAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 pullRequestId: pullRequestId,
@@ -1991,7 +1993,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
+            LogOperationError(ex, "Error getting pull request {PullRequestId} for repository {Repository}", pullRequestId, repositoryNameOrId);
             throw;
         }
     }
@@ -2006,7 +2008,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting pull request {PullRequestId} at project level", pullRequestId);
 
-            var pullRequest = await GitClient.GetPullRequestByIdAsync(
+            var pullRequest = await (await GetGitClientAsync(cancellationToken)).GetPullRequestByIdAsync(
                 pullRequestId: pullRequestId,
                 project: projectName,
                 cancellationToken: cancellationToken);
@@ -2015,7 +2017,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pull request {PullRequestId} at project level", pullRequestId);
+            LogOperationError(ex, "Error getting pull request {PullRequestId} at project level", pullRequestId);
             throw;
         }
     }
@@ -2031,7 +2033,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting threads for pull request {PullRequestId}", pullRequestId);
 
-            var threads = await GitClient.GetThreadsAsync(
+            var threads = await (await GetGitClientAsync(cancellationToken)).GetThreadsAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 pullRequestId: pullRequestId,
@@ -2041,7 +2043,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting threads for pull request {PullRequestId}", pullRequestId);
+            LogOperationError(ex, "Error getting threads for pull request {PullRequestId}", pullRequestId);
             throw;
         }
     }
@@ -2096,7 +2098,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 };
             }
 
-            var created = await GitClient.CreateThreadAsync(
+            var created = await (await GetGitClientAsync(cancellationToken)).CreateThreadAsync(
                 commentThread: thread,
                 project: project ?? DefaultProject,
                 repositoryId: repositoryNameOrId,
@@ -2108,8 +2110,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
+            LogOperationError(ex,
                 "Error creating thread on pull request {PullRequestId} for repository {Repository}",
                 pullRequestId,
                 repositoryNameOrId);
@@ -2141,7 +2142,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 CommentType = CommentType.Text
             };
 
-            var created = await GitClient.CreateCommentAsync(
+            var created = await (await GetGitClientAsync(cancellationToken)).CreateCommentAsync(
                 comment: comment,
                 repositoryId: repositoryNameOrId,
                 pullRequestId: pullRequestId,
@@ -2162,8 +2163,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
+            LogOperationError(ex,
                 "Error adding comment to thread {ThreadId} on pull request {PullRequestId}",
                 threadId,
                 pullRequestId);
@@ -2196,7 +2196,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 Status = threadStatus
             };
 
-            var updated = await GitClient.UpdateThreadAsync(
+            var updated = await (await GetGitClientAsync(cancellationToken)).UpdateThreadAsync(
                 commentThread: thread,
                 project: projectName,
                 repositoryId: repositoryNameOrId,
@@ -2209,8 +2209,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
+            LogOperationError(ex,
                 "Error updating thread {ThreadId} on pull request {PullRequestId} to status {Status}",
                 threadId,
                 pullRequestId,
@@ -2238,7 +2237,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 Status = ParsePullRequestStatus(status)
             };
 
-            var pullRequests = await GitClient.GetPullRequestsAsync(
+            var pullRequests = await (await GetGitClientAsync(cancellationToken)).GetPullRequestsAsync(
                 project: projectName,
                 repositoryId: repositoryNameOrId,
                 searchCriteria: searchCriteria,
@@ -2259,7 +2258,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error searching pull requests with text '{SearchText}'", searchText);
+            LogOperationError(ex, "Error searching pull requests with text '{SearchText}'", searchText);
             throw;
         }
     }
@@ -2315,7 +2314,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 }
             }
 
-            var result = await GitClient.CreatePullRequestAsync(
+            var result = await (await GetGitClientAsync(cancellationToken)).CreatePullRequestAsync(
                 gitPullRequestToCreate: gitPullRequest,
                 repositoryId: repositoryNameOrId,
                 project: projectName,
@@ -2325,7 +2324,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating pull request in repository {Repository}", repositoryNameOrId);
+            LogOperationError(ex, "Error creating pull request in repository {Repository}", repositoryNameOrId);
             throw;
         }
     }
@@ -2377,7 +2376,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 pullRequestUpdate.IsDraft = isDraft.Value;
             }
 
-            var result = await GitClient.UpdatePullRequestAsync(
+            var result = await (await GetGitClientAsync(cancellationToken)).UpdatePullRequestAsync(
                 gitPullRequestToUpdate: pullRequestUpdate,
                 project: projectName,
                 repositoryId: repositoryNameOrId,
@@ -2389,8 +2388,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
+            LogOperationError(ex,
                 "Error updating pull request {PullRequestId} in repository {Repository}",
                 pullRequestId,
                 repositoryNameOrId);
@@ -2516,7 +2514,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting pipelines for project {Project}", projectName);
 
-            var definitions = await BuildClient.GetDefinitionsAsync(
+            var definitions = await (await GetBuildClientAsync(cancellationToken)).GetDefinitionsAsync(
                 project: projectName,
                 name: name,
                 path: folder,
@@ -2527,7 +2525,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pipelines for project");
+            LogOperationError(ex, "Error getting pipelines for project");
             throw;
         }
     }
@@ -2542,7 +2540,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting pipeline {PipelineId}", pipelineId);
 
-            var definition = await BuildClient.GetDefinitionAsync(
+            var definition = await (await GetBuildClientAsync(cancellationToken)).GetDefinitionAsync(
                 project: projectName,
                 definitionId: pipelineId,
                 cancellationToken: cancellationToken);
@@ -2551,7 +2549,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pipeline {PipelineId}", pipelineId);
+            LogOperationError(ex, "Error getting pipeline {PipelineId}", pipelineId);
             throw;
         }
     }
@@ -2571,7 +2569,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting builds for project {Project}", projectName);
 
-            var builds = await BuildClient.GetBuildsAsync(
+            var builds = await (await GetBuildClientAsync(cancellationToken)).GetBuildsAsync(
                 project: projectName,
                 definitions: definitions?.ToList(),
                 branchName: branchName,
@@ -2585,7 +2583,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting builds for project");
+            LogOperationError(ex, "Error getting builds for project");
             throw;
         }
     }
@@ -2600,7 +2598,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting build {BuildId}", buildId);
 
-            var build = await BuildClient.GetBuildAsync(
+            var build = await (await GetBuildClientAsync(cancellationToken)).GetBuildAsync(
                 project: projectName,
                 buildId: buildId,
                 cancellationToken: cancellationToken);
@@ -2609,7 +2607,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting build {BuildId}", buildId);
+            LogOperationError(ex, "Error getting build {BuildId}", buildId);
             throw;
         }
     }
@@ -2624,7 +2622,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting logs for build {BuildId}", buildId);
 
-            var logs = await BuildClient.GetBuildLogsAsync(
+            var logs = await (await GetBuildClientAsync(cancellationToken)).GetBuildLogsAsync(
                 project: projectName,
                 buildId: buildId,
                 cancellationToken: cancellationToken);
@@ -2633,7 +2631,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting logs for build {BuildId}", buildId);
+            LogOperationError(ex, "Error getting logs for build {BuildId}", buildId);
             throw;
         }
     }
@@ -2649,7 +2647,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting log content for build {BuildId}, log {LogId}", buildId, logId);
 
-            var logLines = await BuildClient.GetBuildLogLinesAsync(
+            var logLines = await (await GetBuildClientAsync(cancellationToken)).GetBuildLogLinesAsync(
                 project: projectName,
                 buildId: buildId,
                 logId: logId,
@@ -2659,7 +2657,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting log content for build {BuildId}, log {LogId}", buildId, logId);
+            LogOperationError(ex, "Error getting log content for build {BuildId}, log {LogId}", buildId, logId);
             throw;
         }
     }
@@ -2674,7 +2672,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             var projectName = project ?? DefaultProject;
             _logger.LogDebug("Getting timeline for build {BuildId}", buildId);
 
-            var timeline = await BuildClient.GetBuildTimelineAsync(
+            var timeline = await (await GetBuildClientAsync(cancellationToken)).GetBuildTimelineAsync(
                 project: projectName,
                 buildId: buildId,
                 cancellationToken: cancellationToken);
@@ -2688,7 +2686,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting timeline for build {BuildId}", buildId);
+            LogOperationError(ex, "Error getting timeline for build {BuildId}", buildId);
             throw;
         }
     }
@@ -2817,7 +2815,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
         try
         {
-            var wikis = await WikiClient.GetAllWikisAsync(project: projectName, cancellationToken: cancellationToken);
+            var wikis = await (await GetWikiClientAsync(cancellationToken)).GetAllWikisAsync(project: projectName, cancellationToken: cancellationToken);
 
             _logger.LogInformation("Found {Count} wikis", wikis.Count);
 
@@ -2825,7 +2823,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting wikis for project: {Project}", projectName);
+            LogOperationError(ex, "Error getting wikis for project: {Project}", projectName);
             throw;
         }
     }
@@ -2833,16 +2831,16 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
     public async Task<WikiDto?> GetWikiAsync(string wikiIdentifier, string? project = null, CancellationToken cancellationToken = default)
     {
         var projectName = project ?? DefaultProject;
+        var wikiClient = await GetWikiClientAsync(cancellationToken);
 
         _logger.LogInformation("Getting wiki: {WikiIdentifier} in project: {Project}", wikiIdentifier, projectName ?? "(default)");
 
         try
         {
-            var wiki = await WikiClient.GetWikiAsync(project: projectName, wikiIdentifier: wikiIdentifier, cancellationToken: cancellationToken);
+            var wiki = await wikiClient.GetWikiAsync(project: projectName, wikiIdentifier: wikiIdentifier, cancellationToken: cancellationToken);
             return MapToWikiDto(wiki);
         }
-        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
-                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (AzureDevOpsErrorClassifier.IsNotFound(ex))
         {
             _logger.LogWarning("Wiki '{WikiIdentifier}' not found", wikiIdentifier);
             return null;
@@ -2858,6 +2856,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var projectName = project ?? DefaultProject;
+        var wikiClient = await GetWikiClientAsync(cancellationToken);
 
         _logger.LogInformation("Getting wiki page: {Path} from wiki: {WikiIdentifier}", path, wikiIdentifier);
 
@@ -2867,7 +2866,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 ? new GitVersionDescriptor { Version = version, VersionType = GitVersionType.Branch }
                 : null;
 
-            var page = await WikiClient.GetPageAsync(
+            var page = await wikiClient.GetPageAsync(
                 project: projectName,
                 wikiIdentifier: wikiIdentifier,
                 path: path,
@@ -2878,8 +2877,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
             return MapToWikiPageDto(page.Page, page.Page.Content);
         }
-        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
-                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (AzureDevOpsErrorClassifier.IsNotFound(ex))
         {
             _logger.LogWarning("Wiki page '{Path}' not found in wiki '{WikiIdentifier}'", path, wikiIdentifier);
             return null;
@@ -2894,6 +2892,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var projectName = project ?? DefaultProject;
+        var wikiClient = await GetWikiClientAsync(cancellationToken);
 
         _logger.LogInformation("Getting wiki page tree: {Path} from wiki: {WikiIdentifier} with recursion: {Recursion}", path, wikiIdentifier, recursionLevel);
 
@@ -2903,7 +2902,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
                 ? VersionControlRecursionType.Full
                 : VersionControlRecursionType.OneLevel;
 
-            var page = await WikiClient.GetPageAsync(
+            var page = await wikiClient.GetPageAsync(
                 project: projectName,
                 wikiIdentifier: wikiIdentifier,
                 path: path,
@@ -2913,8 +2912,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
             return MapToWikiPageDtoWithSubPages(page.Page);
         }
-        catch (Exception ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
-                                   ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (AzureDevOpsErrorClassifier.IsNotFound(ex))
         {
             _logger.LogWarning("Wiki page '{Path}' not found in wiki '{WikiIdentifier}'", path, wikiIdentifier);
             return null;
@@ -2987,6 +2985,13 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         _disposed = true;
     }
 
+    private void LogOperationError(Exception exception, string message, params object?[] arguments)
+    {
+        if (AzureDevOpsErrorClassifier.FindCancellation(exception) is not null) return;
+        var error = AzureDevOpsErrorClassifier.Classify(exception);
+        _logger.LogError("{Operation} failed ({ErrorCode}, {ExceptionType})",
+            message, error.ErrorCode, exception.GetType().Name);
+    }
     private sealed class AzureDevOpsOrganizationContext : IDisposable
     {
         public required string Name { get; init; }
@@ -2997,21 +3002,7 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
 
         public required VssConnection Connection { get; init; }
 
-        public required WorkItemTrackingHttpClient WitClient { get; init; }
-
-        public required GitHttpClient GitClient { get; init; }
-
-        public required BuildHttpClient BuildClient { get; init; }
-
-        public required WikiHttpClient WikiClient { get; init; }
-
-        public void Dispose()
-        {
-            WitClient.Dispose();
-            GitClient.Dispose();
-            BuildClient.Dispose();
-            WikiClient.Dispose();
-            Connection.Dispose();
-        }
+        // VssConnection owns and disposes its cached clients; disposing must never create one.
+        public void Dispose() => Connection.Dispose();
     }
 }
