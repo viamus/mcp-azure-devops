@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file.
 - A .NET 10 STDIO host in `src/Viamus.Azure.Devops.Mcp.Stdio`, sharing Azure DevOps tools and configuration with the HTTP host through `Viamus.Azure.Devops.Mcp.Core`.
 - Centralized MCP tool errors with `isError`, actionable messages, stable error codes, HTTP status when available, and a transient-failure indicator for PAT/authentication, permission, resource, rate-limit, network, timeout, configuration, and unexpected failures.
 - Local HTTP and STDIO protocol integration tests, including a simulated Azure DevOps authentication failure over HTTP, safe handling of unsupported insecure Basic authentication, and continued tool discovery after failures.
+- A STDIO configuration and error recovery guide, covering both transports, multiple organizations, PAT replacement, and protocol diagnostics.
 
 ### Fixed
 
@@ -16,6 +17,8 @@ All notable changes to this project are documented in this file.
 - Wiki reads no longer interpret authentication failures as missing resources based on exception message text.
 - Existing tool validation error responses now also set the MCP failure flag.
 - STDIO runtime logs go to stderr and configuration loads relative to the executable.
+- Documentation now includes all 49 tools, the shared Core layout, direct .NET configuration, current PAT scopes, and HTTP API key header options.
+
 ## [1.3.0] - 2026-07-20
 
 ### Added

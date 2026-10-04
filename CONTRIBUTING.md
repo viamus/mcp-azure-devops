@@ -36,7 +36,7 @@ Harassment, discrimination, or abusive behavior will not be tolerated. All contr
 - Provide a reliable MCP server for Azure DevOps integration
 - Offer useful, composable tools for Work Items, Git Repositories, Pull Requests, and Pipelines
 - Keep the server safe-by-default (minimal permissions, no secret leakage)
-- Maintain a clean and extensible architecture for future domains (Boards, Wikis, etc.)
+- Keep shared tool behavior consistent across HTTP and STDIO as new tools are added
 
 ---
 
@@ -65,8 +65,9 @@ You can contribute by:
 
 **PAT Required Scopes:**
 - Work Items: Read & Write
-- Code: Read
+- Code: Read & Write (required for pull request mutations; Read is sufficient for read-only Git workflows)
 - Build: Read
+- Wiki: Read (`vso.wiki`) for Wiki tools; see the [Wiki API scope reference](https://learn.microsoft.com/en-us/rest/api/azure/devops/wiki/wikis/list?view=azure-devops-rest-7.1#security)
 
 ### Clone & Configure
 
@@ -75,13 +76,13 @@ You can contribute by:
 git clone https://github.com/viamus/mcp-azure-devops.git
 cd mcp-azure-devops
 
-# 2. Create environment file
+# For Docker Compose, create and edit its environment file
 cp .env.example .env
-
-# 3. Edit .env with your credentials
 ```
 
 > **Warning**: Never commit `.env` files or hardcode credentials!
+
+For a direct .NET launch, set `AzureDevOps__OrganizationUrl`, `AzureDevOps__PersonalAccessToken`, and optionally `AzureDevOps__DefaultProject` in the process environment instead. The .NET hosts do not load `.env`. See the [configuration guide](docs/stdio-and-error-handling.md#configuration-sources) for PowerShell/Bash examples and multiple organizations. Unit and local protocol tests use mocks and do not require a live PAT.
 
 ### Run Locally
 
@@ -93,7 +94,9 @@ dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 docker compose up -d
 ```
 
-### Verify Setup
+For STDIO, publish `src/Viamus.Azure.Devops.Mcp.Stdio` and configure the client to launch the published DLL or executable. Follow the [STDIO setup guide](docs/stdio-and-error-handling.md#publish-and-configure-stdio) so build output does not enter stdout.
+
+### Verify Setup (HTTP)
 
 ```bash
 # .NET CLI (port 5000)
@@ -102,6 +105,8 @@ curl http://localhost:5000/health
 # Docker (port 8080)
 curl http://localhost:8080/health
 ```
+
+A healthy HTTP endpoint proves that the host is running. It does not validate the PAT; call an Azure DevOps read tool with the intended organization and project to check access.
 
 ---
 
@@ -197,16 +202,25 @@ dotnet test --collect:"XPlat Code Coverage"
 ### Test Structure
 
 ```
-tests/Viamus.Azure.Devops.Mcp.Server.Tests/
-├── Models/     # DTO serialization and equality tests
-└── Tools/      # Tool behavior tests with mocked services
+tests/
+├── Viamus.Azure.Devops.Mcp.Server.Tests/
+│   ├── Configuration/  # Organization settings and safe validation
+│   ├── Errors/         # Error classification and tool boundary
+│   ├── Middleware/     # HTTP API key behavior
+│   ├── Models/         # DTO serialization and equality
+│   ├── Services/       # SDK operations and mappings
+│   ├── Tools/          # Tool behavior with mocked services
+│   └── Transport/      # Local HTTP/STDIO protocol tests
+└── Viamus.Azure.Devops.Mcp.Stdio.Tests/
+    ├── StdioHostTests.cs      # Configuration precedence and stderr logging
+    └── StdioProtocolTests.cs  # Built host process startup and shutdown
 ```
 
 ### Testing Layers
 
 - **Unit tests**: Services and mapping logic
 - **Contract tests**: MCP tool outputs
-- **Integration tests**: HTTP endpoints (optional but encouraged)
+- **Integration tests**: Local HTTP and STDIO protocol/process tests run in the test suite and CI without a live Azure DevOps PAT. Live organization access requires separate validation.
 
 ---
 
@@ -298,7 +312,7 @@ src/
 | Interface-based design | Enables testing with mocks |
 | DTOs as sealed records | Immutability and value equality |
 | JSON serialization | CamelCase, indented output |
-| Error handling | JSON error responses, no exceptions to client |
+| Error handling | Shared safe JSON error contract and MCP `isError`; client-requested cancellation is preserved |
 
 ### Azure DevOps SDK Clients
 
@@ -307,6 +321,7 @@ src/
 | `WorkItemTrackingHttpClient` | Work Items, WIQL queries, comments |
 | `GitHttpClient` | Repositories, branches, items, file content, PRs |
 | `BuildHttpClient` | Pipelines, builds, logs, timelines |
+| `WikiHttpClient` | Wiki metadata, pages, and page hierarchies |
 
 ---
 

@@ -73,7 +73,7 @@ sequenceDiagram
     end
 ```
 
-### 3.1 Proposed Data Models (`Viamus.Azure.Devops.Mcp.Server/Models/`)
+### 3.1 Proposed Data Models (`Viamus.Azure.Devops.Mcp.Core/Models/`)
 1. **`WorkItemStateTransition.cs`**:
    - `int Revision`
    - `string State`

@@ -5,13 +5,15 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Azure DevOps integration, enabling AI assistants to interact with Azure DevOps Work Items, Git Repositories, Pull Requests, and Pipelines.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Azure DevOps integration, enabling AI assistants to interact with Azure DevOps Work Items, Git Repositories, Pull Requests, Pipelines, and Wikis over HTTP or local STDIO.
 
 > **Note**: Flow metrics, WIP analysis, and other analytics features were removed. With `ActivatedDate` and `ClosedDate` now exposed on all work item queries, Claude can derive cycle time, lead time, aging, and throughput directly from the data — no pre-built analytics tools needed.
 
 ---
 
-## Quick Start
+For local process setup, multi-organization configuration, PAT replacement, and error recovery, see the [STDIO and error handling guide](docs/stdio-and-error-handling.md).
+
+## Quick Start (HTTP)
 
 Get up and running in 3 steps:
 
@@ -93,7 +95,7 @@ curl http://localhost:8080/health
 curl http://localhost:5000/health
 ```
 
-You should see: `Healthy`
+You should receive a JSON response with `status: "healthy"` and a timestamp. This checks the HTTP host; call an Azure DevOps read tool to validate PAT access.
 
 ---
 
@@ -138,11 +140,15 @@ This project implements an MCP server that exposes tools for querying and managi
 
 ## Available Tools
 
+Both hosts expose the same 49 tools. All tools accept an optional `organization` selector; see [Multiple Organizations / PATs](#multiple-organizations--pats).
+
 ### Work Item Tools
 
 | Tool | Description |
 |------|-------------|
 | `get_work_item` | Gets details of a specific work item by ID (supports optional `includeRelations` parameter) |
+| `get_work_item_history` | Gets activity and state/column transition history, including authors, timestamps, and durations |
+| `get_work_items_history` | Gets activity and state/column transition history for multiple work item IDs |
 | `get_work_items` | Gets multiple work items by IDs (batch retrieval, supports optional `includeRelations` parameter) |
 | `get_work_item_relations` | Gets the normalized list of relationships (Parent, Child, Related, Predecessor, Successor, Tests, Tested By, Hyperlink, Attachment) associated with a work item |
 | `get_work_item_tree` | Recursively gets parent and child work items starting from a root work item, up to a specified depth limit. Includes cycle detection |
@@ -154,6 +160,8 @@ This project implements an MCP server that exposes tools for querying and managi
 | `search_work_items` | Searches work items by title text |
 | `add_work_item_comment` | Adds a comment to a specific work item |
 | `get_work_item_comments` | Reads comments (discussion history) of a work item, with pagination, sort order, and optional rendered HTML |
+| `get_work_item_attachments` | Lists file attachments associated with a work item |
+| `get_work_item_attachment_content` | Downloads an attachment as text or Base64, subject to a byte limit |
 | `create_work_item` | Creates a new work item (Bug, Task, User Story, etc.) with support for all standard fields, parent linking, and custom fields |
 | `update_work_item` | Updates an existing work item. Only specified fields are changed; omitted fields remain unchanged |
 | `link_work_items` | Links an existing work item to parent, child, predecessor, successor, or related work items |
@@ -178,11 +186,21 @@ This project implements an MCP server that exposes tools for querying and managi
 | `get_pull_request_by_id` | Gets details of a pull request by ID only, searching across all repositories in the project |
 | `get_pull_request_threads` | Gets comment threads for a pull request |
 | `create_pull_request_thread` | Creates a new comment thread on a pull request, either as a general discussion or inline file comment |
+| `add_pull_request_thread_comment` | Adds a comment to an existing PR thread, optionally replying to a parent comment |
 | `update_pull_request_thread_status` | Updates a pull request comment thread status, including close/resolve aliases |
 | `search_pull_requests` | Searches pull requests by text in title or description |
 | `query_pull_requests` | Advanced query with multiple combined filters |
 | `create_pull_request` | Creates a new pull request with title, description, source/target branches, draft flag, reviewers, and linked work items |
 | `update_pull_request` | Updates an existing pull request title, description, target branch, status, or draft flag |
+
+### Wiki Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_wikis` | Lists project and code wikis in a project |
+| `get_wiki` | Gets Wiki metadata by name or ID |
+| `get_wiki_page` | Gets a page by path, optionally including Markdown content and selecting a version |
+| `get_wiki_page_tree` | Gets a page hierarchy with one-level or full recursion |
 
 ### Pipeline/Build Tools
 
@@ -223,6 +241,7 @@ This project implements an MCP server that exposes tools for querying and managi
 | Work Items | Read & Write | Get, query, create, update work items and add comments |
 | Code | Read & Write | Git repositories, branches, files, and pull requests (Write required to create PRs) |
 | Build | Read | Pipelines and builds |
+| Wiki | Read (`vso.wiki`) | Wiki metadata and pages; see the [Wiki API scope reference](https://learn.microsoft.com/en-us/rest/api/azure/devops/wiki/wikis/list?view=azure-devops-rest-7.1#security) |
 
 5. Click **Create** and **copy the token immediately** (you won't see it again!)
 
@@ -294,16 +313,16 @@ Best for: Deployment without .NET runtime
 
 ```bash
 # Windows
-dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r win-x64 -o ./publish/win-x64
+dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release --self-contained true -r win-x64 -o ./publish/win-x64
 
 # Linux
-dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r linux-x64 -o ./publish/linux-x64
+dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release --self-contained true -r linux-x64 -o ./publish/linux-x64
 
 # macOS (Intel)
-dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r osx-x64 -o ./publish/osx-x64
+dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release --self-contained true -r osx-x64 -o ./publish/osx-x64
 
 # macOS (Apple Silicon)
-dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release -r osx-arm64 -o ./publish/osx-arm64
+dotnet publish src/Viamus.Azure.Devops.Mcp.Server -c Release --self-contained true -r osx-arm64 -o ./publish/osx-arm64
 ```
 
 Then run the executable directly:
@@ -363,9 +382,9 @@ Set the client's `command` to the absolute path of `Viamus.Azure.Devops.Mcp.Stdi
 
 ## Security
 
-### API Key Authentication
+### API Key Authentication (HTTP only)
 
-The server supports optional API key authentication to protect your MCP endpoints.
+The HTTP server supports optional API key authentication to protect your MCP endpoints. STDIO relies on access to the local process and its private configuration; it does not use `ServerSecurity` settings. Both hosts separately use PATs to authenticate to Azure DevOps.
 
 #### Configuration
 
@@ -382,7 +401,7 @@ Add to `appsettings.json`:
 Or via environment variables:
 ```bash
 # .NET CLI
-ServerSecurity__ApiKey=your-secret-key ServerSecurity__RequireApiKey=true dotnet run
+ServerSecurity__ApiKey=your-secret-key ServerSecurity__RequireApiKey=true dotnet run --project src/Viamus.Azure.Devops.Mcp.Server
 
 # Docker — configure in .env file (see .env.example)
 docker compose up -d
@@ -402,13 +421,19 @@ MCP_REQUIRE_API_KEY=true
 
 #### Providing the API Key
 
-Clients can provide the API key one way:
+Clients can provide the API key through either header. If both are present, `X-API-Key` takes precedence.
 
 **Option 1 - X-API-Key Header (recommended):**
 ```bash
 curl -H "X-API-Key: your-secret-key" https://localhost:5001
 ```
 
+**Option 2 - Authorization: Bearer Header:**
+```bash
+curl -H "Authorization: Bearer your-secret-key" https://localhost:5001
+```
+
+Use the configured HTTP/HTTPS URL for your host. These headers contain the MCP API key, not the Azure DevOps PAT.
 
 #### Generating a Secure API Key
 
@@ -500,7 +525,7 @@ After configuring the MCP client, you can ask questions like:
 
 ### Tool error responses
 
-Both transports report failed tool execution with MCP `isError: true`. Azure DevOps exceptions produce a JSON text content block with stable fields:
+See the [operational guide](docs/stdio-and-error-handling.md#error-contract) for PAT replacement steps, STDIO diagnostics, and retry guidance. Both transports report failed tool execution with MCP `isError: true`. Azure DevOps exceptions produce a JSON text content block with stable fields:
 
 ```json
 {
@@ -630,14 +655,19 @@ mcp-azure-devops/
 │       ├── Program.cs          # STDIO entry point
 │       ├── StdioHost.cs         # Host setup, executable-relative config, stderr logs
 │       └── appsettings.json
-├── tests/Viamus.Azure.Devops.Mcp.Server.Tests/
-│   ├── Configuration/
-│   ├── Errors/
-│   ├── Middleware/
-│   ├── Models/
-│   ├── Services/
-│   ├── Tools/
-│   └── Transport/              # Local HTTP/STDIO protocol integration tests
+├── tests/
+│   ├── Viamus.Azure.Devops.Mcp.Server.Tests/
+│   │   ├── Configuration/
+│   │   ├── Errors/
+│   │   ├── Middleware/
+│   │   ├── Models/
+│   │   ├── Services/
+│   │   ├── Tools/
+│   │   └── Transport/          # Local HTTP/STDIO protocol integration tests
+│   └── Viamus.Azure.Devops.Mcp.Stdio.Tests/
+│       ├── StdioHostTests.cs
+│       └── StdioProtocolTests.cs
+├── docs/stdio-and-error-handling.md
 ├── .github/
 ├── .env.example
 ├── docker-compose.yml
