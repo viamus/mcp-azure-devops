@@ -13,6 +13,7 @@ using Moq;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Viamus.Azure.Devops.Mcp.Core;
+using Viamus.Azure.Devops.Mcp.Server.Models;
 using Viamus.Azure.Devops.Mcp.Server.Services;
 using Viamus.Azure.Devops.Mcp.Server.Tools;
 
@@ -61,6 +62,11 @@ public sealed class McpHostIntegrationTests
             .OrderBy(name => name)
             .ToArray();
         Assert.Equal(expectedTools, tools.Select(tool => tool.Name).OrderBy(name => name).ToArray());
+        var autoComplete = Assert.Single(tools, tool => tool.Name == "set_pull_request_auto_complete");
+        Assert.Contains("enabled", autoComplete.JsonSchema.GetProperty("required")
+            .EnumerateArray().Select(parameter => parameter.GetString()));
+        Assert.Equal("boolean", autoComplete.JsonSchema.GetProperty("properties")
+            .GetProperty("enabled").GetProperty("type").GetString());
 
         var invalid = await client.CallToolAsync("get_repository",
             new Dictionary<string, object?> { ["repositoryNameOrId"] = "" },
@@ -82,6 +88,50 @@ public sealed class McpHostIntegrationTests
 
         var toolsAfterFailure = await client.ListToolsAsync(cancellationToken: timeout.Token);
         Assert.Equal(tools.Count, toolsAfterFailure.Count);
+    }
+
+    [Fact]
+    public async Task Http_AutoComplete_RequiresExplicitChoice_AndCanDisable()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var service = new Mock<IAzureDevOpsService>();
+        service.Setup(value => value.SetPullRequestAutoCompleteAsync(
+                "repo", 123, false, null, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PullRequestDto
+            {
+                PullRequestId = 123,
+                Status = "Active",
+                AutoCompleteEnabled = false
+            });
+        await using var host = await StartHttpMcpServer("https://dev.azure.com/test", timeout.Token, service.Object);
+        await using var client = await McpClientFactory.CreateAsync(new SseClientTransport(new SseClientTransportOptions
+        {
+            Endpoint = GetAddress(host),
+            UseStreamableHttp = true
+        }), cancellationToken: timeout.Token);
+
+        var missingChoice = await client.CallToolAsync("set_pull_request_auto_complete",
+            new Dictionary<string, object?> { ["repositoryNameOrId"] = "repo", ["pullRequestId"] = 123 },
+            cancellationToken: timeout.Token);
+        Assert.True(missingChoice.IsError);
+        service.VerifyNoOtherCalls();
+
+        var response = await client.CallToolAsync("set_pull_request_auto_complete",
+            new Dictionary<string, object?>
+            {
+                ["repositoryNameOrId"] = "repo",
+                ["pullRequestId"] = 123,
+                ["enabled"] = false
+            },
+            cancellationToken: timeout.Token);
+
+        Assert.False(response.IsError is true);
+        using var payload = JsonDocument.Parse(Assert.Single(response.Content).Text!);
+        Assert.True(payload.RootElement.GetProperty("success").GetBoolean());
+        Assert.False(payload.RootElement.GetProperty("pullRequest").GetProperty("autoCompleteEnabled").GetBoolean());
+        service.Verify(value => value.SetPullRequestAutoCompleteAsync(
+            "repo", 123, false, null, null, null, It.IsAny<CancellationToken>()), Times.Once);
+        service.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -201,7 +251,6 @@ public sealed class McpHostIntegrationTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -209,6 +258,7 @@ public sealed class McpHostIntegrationTests
             ["AzureDevOps:PersonalAccessToken"] = TestPat,
             ["AzureDevOps:DefaultProject"] = "test-project"
         });
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         if (service != null) builder.Services.AddSingleton(service);
         builder.Services.AddAzureDevOpsMcp(builder.Configuration).WithHttpTransport();
         var app = builder.Build();

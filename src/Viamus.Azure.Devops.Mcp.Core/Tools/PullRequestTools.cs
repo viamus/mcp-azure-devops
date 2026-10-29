@@ -484,6 +484,60 @@ public sealed class PullRequestTools
         }, JsonOptions);
     }
 
+    [McpServerTool(Name = "set_pull_request_auto_complete")]
+    [Description("Enables or disables auto-complete on an existing pull request, only when explicitly requested by the user. When enabled, Azure DevOps completes the PR after required approvals and branch policies pass. Uses the authenticated user and does not bypass policies. To create a PR with auto-complete, call create_pull_request first, then this tool with the returned ID.")]
+    public async Task<string> SetPullRequestAutoComplete(
+        [Description("The repository name or ID")] string repositoryNameOrId,
+        [Description("The pull request ID")] int pullRequestId,
+        [Description("Required explicit choice: true to enable auto-complete, false to disable it")] bool enabled,
+        [Description("Merge strategy when enabling: noFastForward, squash, rebase, or rebaseMerge. Omit to preserve the current strategy, defaulting to noFastForward if none is set.")] string? mergeStrategy = null,
+        [Description("Whether to delete the source branch after completion. Only valid when enabling; omit to preserve the current setting.")] bool? deleteSourceBranch = null,
+        [Description("The project name (optional if default project is configured)")] string? project = null,
+        [Description("The Azure DevOps organization alias or URL (optional if default organization is configured)")] string? organization = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var organizationScope = _organizationContextAccessor.Use(organization);
+        if (string.IsNullOrWhiteSpace(repositoryNameOrId))
+        {
+            return JsonSerializer.Serialize(new { error = "Repository name or ID is required" }, JsonOptions);
+        }
+
+        if (pullRequestId <= 0)
+        {
+            return JsonSerializer.Serialize(new { error = "Pull request ID must be a positive integer" }, JsonOptions);
+        }
+
+        if (!enabled && (mergeStrategy is not null || deleteSourceBranch.HasValue))
+        {
+            return JsonSerializer.Serialize(new { error = "Merge strategy and source branch deletion options are only valid when enabling auto-complete" }, JsonOptions);
+        }
+
+        var normalizedMergeStrategy = mergeStrategy?.Trim().ToLowerInvariant() switch
+        {
+            null => null,
+            "nofastforward" => "NoFastForward",
+            "squash" => "Squash",
+            "rebase" => "Rebase",
+            "rebasemerge" => "RebaseMerge",
+            _ => string.Empty
+        };
+        if (normalizedMergeStrategy == string.Empty)
+        {
+            return JsonSerializer.Serialize(new { error = "Unsupported merge strategy. Supported strategies are noFastForward, squash, rebase, and rebaseMerge" }, JsonOptions);
+        }
+
+        var pullRequest = await _azureDevOpsService.SetPullRequestAutoCompleteAsync(
+            repositoryNameOrId, pullRequestId, enabled, normalizedMergeStrategy,
+            deleteSourceBranch, project, cancellationToken);
+
+        return JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Auto-complete {(enabled ? "enabled" : "disabled")} for pull request {pullRequest.PullRequestId}",
+            pullRequest
+        }, JsonOptions);
+    }
+
     [McpServerTool(Name = "query_pull_requests")]
     [Description("Advanced query for pull requests with multiple combined filters. Allows filtering by status, branches, dates, creator, and reviewer simultaneously.")]
     public async Task<string> QueryPullRequests(

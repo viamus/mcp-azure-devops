@@ -2396,6 +2396,118 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
         }
     }
 
+    public async Task<PullRequestDto> SetPullRequestAutoCompleteAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        bool enabled,
+        string? mergeStrategy = null,
+        bool? deleteSourceBranch = null,
+        string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryNameOrId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pullRequestId);
+
+        var strategy = ParseAutoCompleteMergeStrategy(mergeStrategy);
+        if (!enabled && (mergeStrategy is not null || deleteSourceBranch.HasValue))
+        {
+            throw new ArgumentException("Completion options can only be provided when enabling auto-complete.");
+        }
+
+        try
+        {
+            var context = GetOrganizationContext();
+            var projectName = project ?? context.DefaultProject;
+            var gitClient = await context.Connection.GetClientAsync<GitHttpClient>(cancellationToken);
+            var current = await gitClient.GetPullRequestAsync(
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                pullRequestId: pullRequestId,
+                cancellationToken: cancellationToken);
+
+            if (enabled && (current.Status != PullRequestStatus.Active || current.IsDraft == true))
+            {
+                throw new ArgumentException("Auto-complete can only be enabled for an active, non-draft pull request.");
+            }
+
+            var authenticatedIdentityId = Guid.Empty;
+            if (enabled)
+            {
+                await context.Connection.ConnectAsync(cancellationToken);
+                authenticatedIdentityId = context.Connection.AuthenticatedIdentity?.Id ?? Guid.Empty;
+                if (authenticatedIdentityId == Guid.Empty)
+                {
+                    throw new InvalidOperationException("Unable to resolve the authenticated Azure DevOps identity.");
+                }
+            }
+
+            var update = CreateAutoCompleteUpdate(current, enabled, authenticatedIdentityId, strategy, deleteSourceBranch);
+            var result = await gitClient.UpdatePullRequestAsync(
+                gitPullRequestToUpdate: update,
+                project: projectName,
+                repositoryId: repositoryNameOrId,
+                pullRequestId: pullRequestId,
+                userState: null,
+                cancellationToken: cancellationToken);
+
+            return MapToPullRequestDto(result);
+        }
+        catch (Exception ex)
+        {
+            LogOperationError(ex,
+                "Error setting auto-complete for pull request {PullRequestId} in repository {Repository}",
+                pullRequestId,
+                repositoryNameOrId);
+            throw;
+        }
+    }
+
+    private static GitPullRequestMergeStrategy? ParseAutoCompleteMergeStrategy(string? mergeStrategy)
+    {
+        if (mergeStrategy is null)
+            return null;
+
+        return mergeStrategy.Trim().ToLowerInvariant() switch
+        {
+            "nofastforward" => GitPullRequestMergeStrategy.NoFastForward,
+            "squash" => GitPullRequestMergeStrategy.Squash,
+            "rebase" => GitPullRequestMergeStrategy.Rebase,
+            "rebasemerge" => GitPullRequestMergeStrategy.RebaseMerge,
+            _ => throw new ArgumentException("Unsupported merge strategy. Use NoFastForward, Squash, Rebase, or RebaseMerge.", nameof(mergeStrategy))
+        };
+    }
+
+    private static GitPullRequest CreateAutoCompleteUpdate(
+        GitPullRequest current,
+        bool enabled,
+        Guid authenticatedIdentityId,
+        GitPullRequestMergeStrategy? mergeStrategy,
+        bool? deleteSourceBranch)
+    {
+        var update = new GitPullRequest
+        {
+            // Azure DevOps clears auto-complete when the identity is the empty GUID.
+            AutoCompleteSetBy = new IdentityRef { Id = (enabled ? authenticatedIdentityId : Guid.Empty).ToString() }
+        };
+
+        if (enabled)
+        {
+            var existing = current.CompletionOptions;
+            update.CompletionOptions = new GitPullRequestCompletionOptions
+            {
+                MergeStrategy = mergeStrategy ?? existing?.MergeStrategy
+                    ?? (existing?.SquashMerge == true ? GitPullRequestMergeStrategy.Squash : GitPullRequestMergeStrategy.NoFastForward),
+                DeleteSourceBranch = deleteSourceBranch ?? existing?.DeleteSourceBranch ?? false,
+                MergeCommitMessage = existing?.MergeCommitMessage,
+                TransitionWorkItems = existing?.TransitionWorkItems ?? false,
+                AutoCompleteIgnoreConfigIds = existing?.AutoCompleteIgnoreConfigIds,
+                BypassPolicy = false
+            };
+        }
+
+        return update;
+    }
+
     private static PullRequestStatus? ParsePullRequestStatus(string? status)
     {
         if (string.IsNullOrEmpty(status))
@@ -2440,6 +2552,12 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             ClosedDate = pr.ClosedDate,
             MergeStatus = pr.MergeStatus.ToString(),
             IsDraft = pr.IsDraft ?? false,
+            AutoCompleteEnabled = Guid.TryParse(pr.AutoCompleteSetBy?.Id, out var autoCompleteIdentityId)
+                && autoCompleteIdentityId != Guid.Empty,
+            AutoCompleteSetBy = pr.AutoCompleteSetBy?.DisplayName,
+            AutoCompleteSetById = pr.AutoCompleteSetBy?.Id,
+            MergeStrategy = pr.CompletionOptions?.MergeStrategy?.ToString(),
+            DeleteSourceBranch = pr.CompletionOptions?.DeleteSourceBranch,
             RepositoryName = pr.Repository?.Name,
             RepositoryId = pr.Repository?.Id.ToString(),
             ProjectName = pr.Repository?.ProjectReference?.Name,

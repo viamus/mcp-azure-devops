@@ -140,7 +140,7 @@ This project implements an MCP server that exposes tools for querying and managi
 
 ## Available Tools
 
-Both hosts expose the same 49 tools. All tools accept an optional `organization` selector; see [Multiple Organizations / PATs](#multiple-organizations--pats).
+Both hosts expose the same 50 tools. All tools accept an optional `organization` selector; see [Multiple Organizations / PATs](#multiple-organizations--pats).
 
 ### Work Item Tools
 
@@ -192,6 +192,29 @@ Both hosts expose the same 49 tools. All tools accept an optional `organization`
 | `query_pull_requests` | Advanced query with multiple combined filters |
 | `create_pull_request` | Creates a new pull request with title, description, source/target branches, draft flag, reviewers, and linked work items |
 | `update_pull_request` | Updates an existing pull request title, description, target branch, status, or draft flag |
+| `set_pull_request_auto_complete` | Explicitly enables or disables auto-complete, with optional merge strategy and source branch deletion |
+
+#### Pull request auto-complete
+
+Use `set_pull_request_auto_complete` only when the user requests automatic completion. The required `enabled` argument makes the choice explicit. To enable it on a newly created PR, call `create_pull_request`, then pass the returned PR ID to this tool:
+
+```json
+{
+  "repositoryNameOrId": "my-repo",
+  "pullRequestId": 123,
+  "enabled": true,
+  "mergeStrategy": "squash",
+  "deleteSourceBranch": true,
+  "project": "my-project",
+  "organization": "primary"
+}
+```
+
+The tool uses the authenticated identity for the selected organization. Azure DevOps waits for required approvals and branch policies before completing the PR; policies are never bypassed. Enabling requires an active PR that is ready for review. See [Microsoft's auto-complete documentation](https://learn.microsoft.com/en-us/azure/devops/repos/git/complete-pull-requests?view=azure-devops#set-a-pull-request-to-autocomplete).
+
+`mergeStrategy` accepts `noFastForward`, `squash`, `rebase`, or `rebaseMerge` (case-insensitive). Omit it to keep the existing strategy, defaulting to `noFastForward` when none is configured. Omit `deleteSourceBranch` to keep its existing value. The `project` and `organization` arguments follow the usual configured defaults.
+
+To cancel auto-complete, pass `"enabled": false` and omit the merge and deletion options. PR responses expose `autoCompleteEnabled`, `autoCompleteSetBy`, `autoCompleteSetById`, `mergeStrategy`, and `deleteSourceBranch` so clients can verify the resulting state and options. Other PR tools do not enable auto-complete implicitly.
 
 ### Wiki Tools
 
