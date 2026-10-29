@@ -17,7 +17,7 @@ namespace Viamus.Azure.Devops.Mcp.Server.Services;
 /// <summary>
 /// Implementation of Azure DevOps service for work item operations.
 /// </summary>
-public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
+public sealed partial class AzureDevOpsService : IAzureDevOpsService, IDisposable
 {
     private readonly AzureDevOpsOptions _options;
     private readonly ILogger<AzureDevOpsService> _logger;
@@ -2546,6 +2546,9 @@ public sealed class AzureDevOpsService : IAzureDevOpsService, IDisposable
             Description = pr.Description,
             SourceBranch = pr.SourceRefName,
             TargetBranch = pr.TargetRefName,
+            LastMergeSourceCommitId = pr.LastMergeSourceCommit?.CommitId,
+            LastMergeTargetCommitId = pr.LastMergeTargetCommit?.CommitId,
+            LastMergeCommitId = pr.LastMergeCommit?.CommitId,
             Status = pr.Status.ToString(),
             CreatedBy = pr.CreatedBy?.DisplayName,
             CreationDate = pr.CreationDate,

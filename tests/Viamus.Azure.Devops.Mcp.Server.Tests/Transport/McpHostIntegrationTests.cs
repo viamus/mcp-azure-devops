@@ -67,6 +67,24 @@ public sealed class McpHostIntegrationTests
             .EnumerateArray().Select(parameter => parameter.GetString()));
         Assert.Equal("boolean", autoComplete.JsonSchema.GetProperty("properties")
             .GetProperty("enabled").GetProperty("type").GetString());
+        (string Name, string[] Required)[] readOnlyContracts =
+        [
+            ("get_refs", ["repositoryNameOrId"]),
+            ("get_commits", ["repositoryNameOrId", "version"]),
+            ("get_commit", ["repositoryNameOrId", "commitId"]),
+            ("get_commit_diff", ["repositoryNameOrId", "baseVersion", "targetVersion"]),
+            ("get_file_at_version", ["repositoryNameOrId", "filePath", "version"]),
+            ("get_policy_configurations", ["repositoryNameOrId", "refName"]),
+            ("get_pull_request_policy_evaluations", ["repositoryNameOrId", "pullRequestId"])
+        ];
+        foreach (var contract in readOnlyContracts)
+        {
+            var tool = Assert.Single(tools, tool => tool.Name == contract.Name);
+            Assert.True(tool.ProtocolTool.Annotations?.ReadOnlyHint);
+            Assert.Equal(contract.Required.OrderBy(name => name), tool.JsonSchema.GetProperty("required")
+                .EnumerateArray().Select(parameter => parameter.GetString()).OrderBy(name => name));
+            Assert.True(tool.JsonSchema.GetProperty("properties").TryGetProperty("organization", out _));
+        }
 
         var invalid = await client.CallToolAsync("get_repository",
             new Dictionary<string, object?> { ["repositoryNameOrId"] = "" },
@@ -88,6 +106,39 @@ public sealed class McpHostIntegrationTests
 
         var toolsAfterFailure = await client.ListToolsAsync(cancellationToken: timeout.Token);
         Assert.Equal(tools.Count, toolsAfterFailure.Count);
+    }
+
+    [Fact]
+    public async Task Http_ReadOnlyGitAndPolicyTools_RejectInvalidInputsWithoutCallingService()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var service = new Mock<IAzureDevOpsService>(MockBehavior.Strict);
+        await using var host = await StartHttpMcpServer("https://dev.azure.com/test", timeout.Token, service.Object);
+        await using var client = await McpClientFactory.CreateAsync(new SseClientTransport(new SseClientTransportOptions
+        {
+            Endpoint = GetAddress(host),
+            UseStreamableHttp = true
+        }), cancellationToken: timeout.Token);
+
+        const string commit = "0123456789abcdef0123456789abcdef01234567";
+        (string Name, Dictionary<string, object?> Arguments)[] invalidRequests =
+        [
+            ("get_refs", new() { ["repositoryNameOrId"] = "" }),
+            ("get_commits", new() { ["repositoryNameOrId"] = "repo", ["version"] = "main", ["versionType"] = "1" }),
+            ("get_commit", new() { ["repositoryNameOrId"] = "repo", ["commitId"] = "short-sha" }),
+            ("get_commit_diff", new() { ["repositoryNameOrId"] = "repo", ["baseVersion"] = commit, ["targetVersion"] = "" }),
+            ("get_file_at_version", new() { ["repositoryNameOrId"] = "repo", ["filePath"] = "", ["version"] = commit }),
+            ("get_policy_configurations", new() { ["repositoryNameOrId"] = "repo", ["refName"] = "main" }),
+            ("get_pull_request_policy_evaluations", new() { ["repositoryNameOrId"] = "repo", ["pullRequestId"] = 0 })
+        ];
+        foreach (var request in invalidRequests)
+        {
+            var response = await client.CallToolAsync(request.Name, request.Arguments, cancellationToken: timeout.Token);
+
+            AssertError(response, "INVALID_ARGUMENT");
+        }
+
+        service.VerifyNoOtherCalls();
     }
 
     [Fact]

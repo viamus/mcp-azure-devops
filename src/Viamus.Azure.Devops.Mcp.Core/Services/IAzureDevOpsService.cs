@@ -5,7 +5,7 @@ namespace Viamus.Azure.Devops.Mcp.Server.Services;
 /// <summary>
 /// Interface for Azure DevOps operations.
 /// </summary>
-public interface IAzureDevOpsService
+public partial interface IAzureDevOpsService
 {
     /// <summary>
     /// Gets a work item by its ID.
