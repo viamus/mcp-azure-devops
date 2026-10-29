@@ -16,6 +16,11 @@ public sealed record PullRequestDto
     public DateTime? ClosedDate { get; init; }
     public string? MergeStatus { get; init; }
     public bool IsDraft { get; init; }
+    public bool AutoCompleteEnabled { get; init; }
+    public string? AutoCompleteSetBy { get; init; }
+    public string? AutoCompleteSetById { get; init; }
+    public string? MergeStrategy { get; init; }
+    public bool? DeleteSourceBranch { get; init; }
     public string? RepositoryName { get; init; }
     public string? RepositoryId { get; init; }
     public string? ProjectName { get; init; }

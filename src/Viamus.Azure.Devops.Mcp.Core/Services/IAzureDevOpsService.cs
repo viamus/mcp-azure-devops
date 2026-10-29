@@ -531,6 +531,27 @@ public interface IAzureDevOpsService
         string? project = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Explicitly enables or disables auto-complete using the authenticated identity.
+    /// Required branch policies are never bypassed.
+    /// </summary>
+    /// <param name="repositoryNameOrId">The repository name or ID.</param>
+    /// <param name="pullRequestId">The pull request ID.</param>
+    /// <param name="enabled">Whether to enable auto-complete.</param>
+    /// <param name="mergeStrategy">Optional strategy: NoFastForward, Squash, Rebase, or RebaseMerge.</param>
+    /// <param name="deleteSourceBranch">Whether to delete the source branch after completion; omission preserves its current setting.</param>
+    /// <param name="project">The project name (optional if default project is configured).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated pull request, including its auto-complete state.</returns>
+    Task<PullRequestDto> SetPullRequestAutoCompleteAsync(
+        string repositoryNameOrId,
+        int pullRequestId,
+        bool enabled,
+        string? mergeStrategy = null,
+        bool? deleteSourceBranch = null,
+        string? project = null,
+        CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Pipeline/Build Operations
