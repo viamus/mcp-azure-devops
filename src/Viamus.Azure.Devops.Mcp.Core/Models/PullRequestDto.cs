@@ -10,6 +10,9 @@ public sealed record PullRequestDto
     public string? Description { get; init; }
     public string? SourceBranch { get; init; }
     public string? TargetBranch { get; init; }
+    public string? LastMergeSourceCommitId { get; init; }
+    public string? LastMergeTargetCommitId { get; init; }
+    public string? LastMergeCommitId { get; init; }
     public string? Status { get; init; }
     public string? CreatedBy { get; init; }
     public DateTime? CreationDate { get; init; }

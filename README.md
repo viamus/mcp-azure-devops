@@ -140,7 +140,7 @@ This project implements an MCP server that exposes tools for querying and managi
 
 ## Available Tools
 
-Both hosts expose the same 50 tools. All tools accept an optional `organization` selector; see [Multiple Organizations / PATs](#multiple-organizations--pats).
+Both hosts expose the same 57 tools. All tools accept an optional `organization` selector; see [Multiple Organizations / PATs](#multiple-organizations--pats).
 
 ### Work Item Tools
 
@@ -176,6 +176,19 @@ Both hosts expose the same 50 tools. All tools accept an optional `organization`
 | `get_repository_items` | Browses files and folders at a specific path in a repository |
 | `get_file_content` | Gets the content of a specific file in a repository |
 | `search_repository_files` | Searches for files by path pattern in a repository |
+| `get_refs` | Pages through repository refs, including lightweight and annotated tags with peeled commit IDs |
+| `get_commits` | Pages through commit history at a branch, tag, or commit |
+| `get_commit` | Gets one commit by SHA, including its parents and author/committer metadata |
+| `get_commit_diff` | Pages through changed files between branch, tag, or commit revisions and returns resolved commit IDs |
+| `get_file_at_version` | Reads a file at an explicit branch, tag, or commit revision |
+
+#### Tags, commits, and revision comparisons
+
+These queries are read-only. `get_refs` defaults to `filter: "tags/"`; use `"heads/"` for branches or an empty filter for all refs. Follow each returned `continuationToken` until `hasMore` is false. Annotated tags include their peeled object ID so clients can resolve the referenced commit rather than treating the tag object as a commit. See the [Azure DevOps refs API](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/refs/list?view=azure-devops-rest-7.1).
+
+`get_commits` accepts a required `version` and a `versionType` of `branch`, `tag`, or `commit`. For subsequent pages, use the returned resolved commit ID with `versionType: "commit"`, following `nextSkip`, to keep the history pinned if a branch moves.
+
+`get_commit_diff` compares required `baseVersion` and `targetVersion`, each with an explicit version type (default `commit`). Its response contains changed-file metadata, resolved base/target commit IDs, and pagination/completeness information. Follow every page before treating a comparison as complete. To review text changes, use `get_file_at_version` for each path at the returned immutable commits; use the original path for the base side of a rename. The diff response is a changed-file listing, not a unified text patch. `diffCommonCommit: true` compares from the merge base, so read old text at `commonCommit`; otherwise read it at `baseCommit`. See the [Azure DevOps diff API](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/diffs/get?view=azure-devops-rest-7.1).
 
 ### Pull Request Tools
 
@@ -193,6 +206,16 @@ Both hosts expose the same 50 tools. All tools accept an optional `organization`
 | `create_pull_request` | Creates a new pull request with title, description, source/target branches, draft flag, reviewers, and linked work items |
 | `update_pull_request` | Updates an existing pull request title, description, target branch, status, or draft flag |
 | `set_pull_request_auto_complete` | Explicitly enables or disables auto-complete, with optional merge strategy and source branch deletion |
+| `get_policy_configurations` | Pages through effective policies for an exact repository and target branch, including inherited rules |
+| `get_pull_request_policy_evaluations` | Pages through policy evaluation statuses and configurations for an existing PR |
+
+#### Approval policy evidence
+
+Call `get_policy_configurations` with the repository name/ID and a fully qualified target `refName`, such as `refs/heads/develop`. The server resolves the repository ID and queries Azure DevOps with both repository and branch scope, so applicable project and hierarchical policies are included. Follow every `continuationToken` before drawing conclusions. Responses preserve policy type, revision, enabled/blocking/deleted flags, raw `settings` and `settings.scope`, and the observation timestamp. See the [effective policy configurations API](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/policy-configurations/get?view=azure-devops-rest-7.1).
+
+For a specific PR, `get_pull_request_policy_evaluations` returns evaluation statuses and their policy configurations. Follow `nextSkip` while `hasMore` is true. Current reviewer votes or an enabled auto-complete flag do not establish that an approval policy is required; inspect the effective policy's enabled/blocking flags and settings, including `minimumApproverCount` and `creatorVoteCounts`.
+
+PR responses also expose `lastMergeSourceCommitId`, `lastMergeTargetCommitId`, and `lastMergeCommitId`. These identify the last merge calculation's snapshot; query branch refs again when current branch heads are needed. The new queries do not create branches/commits, change policy settings, or approve PRs.
 
 #### Pull request auto-complete
 
